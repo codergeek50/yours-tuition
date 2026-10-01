@@ -25,18 +25,18 @@ export function receiptHtml(p: Payment, o: ReceiptOptions): string {
 <style>
   @page{margin:14mm}
   *{box-sizing:border-box}
-  body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,'Noto Sans',sans-serif;margin:0;padding:16px;color:#14211c;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{font-family:'Inter','DM Sans','Segoe UI',system-ui,-apple-system,Roboto,'Noto Sans',sans-serif;font-kerning:normal;text-rendering:optimizeLegibility;margin:0;padding:16px;color:#14211c;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .box{max-width:520px;margin:0 auto;border:1px solid #cfd9d4;border-radius:14px;overflow:hidden;position:relative}
   .band{background:#224a71;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-  .band h1{margin:0;font-size:20px;line-height:1.2;font-weight:800}
-  .no{margin:0;font-size:14px;font-weight:700;white-space:nowrap;background:rgba(255,255,255,.18);padding:4px 12px;border-radius:999px}
+  .band h1{margin:0;font-size:20px;line-height:1.2;font-weight:600;letter-spacing:-.02em}
+  .no{margin:0;font-size:13px;font-weight:600;white-space:nowrap;letter-spacing:.01em;background:rgba(255,255,255,.18);padding:4px 12px;border-radius:999px}
   .amount{padding:22px 20px 8px}
   .amount small{display:block;color:#4d5f58;font-size:14px;font-weight:600}
-  .amount b{display:block;font-size:40px;line-height:1.15;font-weight:800;color:#224a71;letter-spacing:-.01em}
+  .amount b{display:block;font-size:40px;line-height:1.1;font-weight:600;color:#224a71;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
   table{width:calc(100% - 40px);margin:6px 20px 0;border-collapse:collapse}
   td{padding:11px 0;border-bottom:1px solid #e3eae6;font-size:15px}
   td:first-child{color:#4d5f58}
-  td:last-child{text-align:right;font-weight:700}
+  td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
   tr:last-child td{border-bottom:0}
   .foot{padding:18px 20px 22px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;color:#4d5f58;font-size:14px}
   .foot strong{display:block;color:#14211c;font-size:15px}

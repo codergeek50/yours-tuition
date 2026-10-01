@@ -30,6 +30,11 @@ export default defineConfig({
     },
     VitePWA({
       registerType: 'autoUpdate',
+      // Keep the fonts available offline, but only the Latin subsets (other scripts fall back to the phone's own fonts).
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff2}'],
+        globIgnores: ['**/*{cyrillic,greek,vietnamese}*.woff2'],
+      },
       manifest: {
         name: 'YOURS Tuition',
         short_name: 'YOURS',
