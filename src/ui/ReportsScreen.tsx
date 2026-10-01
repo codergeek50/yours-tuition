@@ -1,11 +1,13 @@
 import { useState } from 'preact/hooks';
-import { addMonths, monthLabel, monthOf, todayISO } from '../domain/dates';
+import { monthOf, todayISO } from '../domain/dates';
 import { formatRupees } from '../domain/money';
 import { balanceFor } from '../domain/fees';
 import type { DataStore } from '../data/store';
 import { attendanceCsv, attendanceSummary, feeReportCsv } from '../reports/csv';
-import { Field, val } from './common';
+import { Field, PageHeader, val } from './common';
 import { downloadText, useLoad } from './hooks';
+import { MonthNav } from './FeesScreen';
+import { IconDownload } from './icons';
 
 export function ReportsScreen({ store }: { store: DataStore }) {
   const today = todayISO();
@@ -20,10 +22,13 @@ export function ReportsScreen({ store }: { store: DataStore }) {
   // Only students who were on the roll in the range: active, or with marks in the range.
   const inRange = sorted.filter((s) => s.active || (days ?? []).some((d) => d.marks[s.id]));
   const summary = attendanceSummary(inRange, days ?? []);
+  const feeStudents = sorted.filter((s) => s.active || (payments ?? []).some((p) => p.studentId === s.id));
+  const collected = (payments ?? []).filter((p) => !p.receipt.voided).reduce((n, p) => n + p.amount, 0);
+  const pending = sorted.filter((s) => s.active).reduce((n, s) => n + Math.max(balanceFor(s, month, payments ?? []), 0), 0);
 
   return (
     <div class="screen">
-      <h2>Reports</h2>
+      <PageHeader title="Reports" sub="Download as CSV for Excel or Google Sheets" />
 
       <section class="card">
         <h3>Attendance</h3>
@@ -33,38 +38,36 @@ export function ReportsScreen({ store }: { store: DataStore }) {
         </div>
         {days && days.length === 0 && <p class="muted">No attendance recorded in this period.</p>}
         {days && days.length > 0 && (
-          <table class="table">
-            <thead><tr><th>Student</th><th>P</th><th>A</th><th>L</th><th>%</th></tr></thead>
-            <tbody>
-              {summary.map((r) => (
-                <tr key={r.student.id}>
-                  <td>{r.student.name}</td><td>{r.present}</td><td>{r.absent}</td><td>{r.leave}</td><td>{r.percent ?? '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <table class="table">
+              <thead><tr><th>Student</th><th>Present</th><th>Absent</th><th>Leave</th><th>%</th></tr></thead>
+              <tbody>
+                {summary.map((r) => (
+                  <tr key={r.student.id}>
+                    <td>{r.student.name}</td><td>{r.present}</td><td>{r.absent}</td><td>{r.leave}</td><td>{r.percent ?? '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p class="muted small">{days.length} day(s) recorded in this period.</p>
+          </>
         )}
-        <p class="muted small">P present, A absent, L leave. {days ? `${days.length} day(s) recorded.` : ''}</p>
-        <button class="btn primary" type="button" disabled={!days || days.length === 0}
+        <button class="btn primary wide" type="button" disabled={!days || days.length === 0}
           onClick={() => downloadText(`attendance_${from}_to_${to}.csv`, attendanceCsv(inRange, days ?? []))}>
-          Download attendance CSV
+          <IconDownload size={20} /> Download attendance CSV
         </button>
       </section>
 
       <section class="card">
         <h3>Fees</h3>
-        <div class="row between month-nav">
-          <button class="btn small" type="button" aria-label="Previous month for fees report" onClick={() => setMonth(addMonths(month, -1))}>‹</button>
-          <strong>{monthLabel(month)}</strong>
-          <button class="btn small" type="button" aria-label="Next month for fees report" onClick={() => setMonth(addMonths(month, 1))}>›</button>
+        <MonthNav month={month} onChange={setMonth} suffix=" for fees report" />
+        <div class="stats two">
+          <div class="stat"><span>Collected</span><b>{formatRupees(collected)}</b></div>
+          <div class="stat"><span>Still to collect</span><b>{formatRupees(pending)}</b></div>
         </div>
-        <p class="muted">
-          Collected {formatRupees((payments ?? []).filter((p) => !p.receipt.voided).reduce((n, p) => n + p.amount, 0))} · Pending{' '}
-          {formatRupees(sorted.filter((s) => s.active).reduce((n, s) => n + Math.max(balanceFor(s, month, payments ?? []), 0), 0))}
-        </p>
-        <button class="btn primary" type="button" disabled={!students}
-          onClick={() => downloadText(`fees_${month}.csv`, feeReportCsv(sorted.filter((s) => s.active || (payments ?? []).some((p) => p.studentId === s.id)), month, payments ?? []))}>
-          Download fees CSV
+        <button class="btn primary wide" type="button" disabled={!students}
+          onClick={() => downloadText(`fees_${month}.csv`, feeReportCsv(feeStudents, month, payments ?? []))}>
+          <IconDownload size={20} /> Download fees CSV
         </button>
       </section>
     </div>

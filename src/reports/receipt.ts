@@ -16,28 +16,40 @@ export function receiptHtml(p: Payment, o: ReceiptOptions): string {
     ['Student', esc(r.studentName)],
     ['Fee for', esc(monthLabel(r.forMonth))],
     ['Date paid', esc(r.issuedOn)],
-    ['Mode', esc(p.mode.toUpperCase())],
-    ['Amount received', esc(formatRupees(r.amount))],
+    ['Paid by', esc(p.mode.toUpperCase())],
     ['Balance for the month', esc(formatRupees(Math.max(r.balanceAfter, 0)))],
   ];
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Receipt ${r.number}</title>
 <style>
-  body{font-family:system-ui,sans-serif;margin:0;padding:24px;color:#111}
-  .box{max-width:480px;margin:0 auto;border:1px solid #999;border-radius:8px;padding:20px;position:relative}
-  h1{margin:0 0 2px;font-size:20px} .no{color:#444;margin:0 0 16px}
-  table{width:100%;border-collapse:collapse} td{padding:8px 0;border-bottom:1px solid #ddd} td:last-child{text-align:right;font-weight:600}
-  .sig{margin-top:32px;text-align:right;color:#444}
-  .void{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:72px;font-weight:800;color:rgba(200,0,0,.25);transform:rotate(-20deg);pointer-events:none}
+  @page{margin:14mm}
+  *{box-sizing:border-box}
+  body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,'Noto Sans',sans-serif;margin:0;padding:16px;color:#14211c;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .box{max-width:520px;margin:0 auto;border:1px solid #cfd9d4;border-radius:14px;overflow:hidden;position:relative}
+  .band{background:#036b4c;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .band h1{margin:0;font-size:20px;line-height:1.2;font-weight:800}
+  .no{margin:0;font-size:14px;font-weight:700;white-space:nowrap;background:rgba(255,255,255,.18);padding:4px 12px;border-radius:999px}
+  .amount{padding:22px 20px 8px}
+  .amount small{display:block;color:#4d5f58;font-size:14px;font-weight:600}
+  .amount b{display:block;font-size:40px;line-height:1.15;font-weight:800;color:#036b4c;letter-spacing:-.01em}
+  table{width:calc(100% - 40px);margin:6px 20px 0;border-collapse:collapse}
+  td{padding:11px 0;border-bottom:1px solid #e3eae6;font-size:15px}
+  td:first-child{color:#4d5f58}
+  td:last-child{text-align:right;font-weight:700}
+  tr:last-child td{border-bottom:0}
+  .foot{padding:18px 20px 22px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;color:#4d5f58;font-size:14px}
+  .foot strong{display:block;color:#14211c;font-size:15px}
+  .void{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:84px;font-weight:900;color:rgba(190,30,20,.22);transform:rotate(-20deg);pointer-events:none}
+  .voidnote{margin:8px 20px 0;padding:10px 12px;background:#fde8e6;color:#a31f16;border-radius:10px;font-size:14px;font-weight:700}
 </style></head><body>
 <div class="box">
   ${r.voided ? '<div class="void">VOID</div>' : ''}
-  <h1>${esc(o.tuitionName)}</h1>
-  <p class="no">Receipt No. ${r.number}</p>
+  <div class="band"><h1>${esc(o.tuitionName)}</h1><p class="no">Receipt No. ${r.number}</p></div>
+  <div class="amount"><small>Amount received</small><b>${esc(formatRupees(r.amount))}</b></div>
+  ${r.voided ? `<p class="voidnote">VOID${r.voidReason ? ` - ${esc(r.voidReason)}` : ''}</p>` : ''}
   <table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>
-  ${r.voided ? `<p><strong>VOID</strong>${r.voidReason ? ` - ${esc(r.voidReason)}` : ''}</p>` : ''}
-  <p class="sig">${esc(o.teacherName)}</p>
+  <div class="foot"><span>Thank you</span><span>Received by<strong>${esc(o.teacherName)}</strong></span></div>
 </div>
 </body></html>`;
 }

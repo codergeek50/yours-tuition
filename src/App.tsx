@@ -14,11 +14,18 @@ import { StudentsScreen } from './ui/StudentsScreen';
 import { FeesScreen } from './ui/FeesScreen';
 import { ReportsScreen } from './ui/ReportsScreen';
 import { MoreScreen } from './ui/MoreScreen';
+import { BrandMark, IconAttendance, IconFees, IconMore, IconReports, IconStudents } from './ui/icons';
 
 export interface AppDeps { fetchImpl?: typeof fetch; local?: () => LocalStore; debounceMs?: number }
 
 type Tab = 'attendance' | 'students' | 'fees' | 'reports' | 'more';
-const TABS: [Tab, string][] = [['attendance', 'Attendance'], ['students', 'Students'], ['fees', 'Fees'], ['reports', 'Reports'], ['more', 'More']];
+const TABS: [Tab, string, () => preact.JSX.Element][] = [
+  ['attendance', 'Attendance', () => <IconAttendance />],
+  ['students', 'Students', () => <IconStudents />],
+  ['fees', 'Fees', () => <IconFees />],
+  ['reports', 'Reports', () => <IconReports />],
+  ['more', 'More', () => <IconMore />],
+];
 
 function parseRepo(input: string): { owner: string; repo: string } | null {
   const m = /^(?:https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(input.trim());
@@ -205,8 +212,11 @@ function Shell(props: {
   return (
     <div class="shell">
       <header class="topbar">
-        <strong>YOURS Tuition</strong>
-        <button type="button" class={`chip chip-${sync.status}`} onClick={() => session.syncNow()} aria-label={`Sync status: ${syncText}. Tap to sync`}>{syncText}</button>
+        <span class="brand"><BrandMark size={30} /> YOURS Tuition</span>
+        <button type="button" class={`sync sync-${sync.status}`} onClick={() => session.syncNow()} aria-label={`Sync status: ${syncText}. Tap to sync`}>
+          <span class="sync-dot" aria-hidden="true" />
+          {syncText}
+        </button>
       </header>
       {expiry !== null && expiry <= 14 && (
         <p class="banner" role="alert">{expiry < 0 ? 'Your access token has expired.' : `Your access token expires in ${expiry} day(s).`} Create a new one in GitHub and reconnect (More).</p>
@@ -226,8 +236,11 @@ function Shell(props: {
         )}
       </main>
       <nav class="tabs" aria-label="Main">
-        {TABS.map(([id, label]) => (
-          <button key={id} type="button" class={tab === id ? 'tab active' : 'tab'} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>{label}</button>
+        {TABS.map(([id, label, icon]) => (
+          <button key={id} type="button" class={tab === id ? 'tab active' : 'tab'} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+            <span class="pill">{icon()}</span>
+            {label}
+          </button>
         ))}
       </nav>
     </div>

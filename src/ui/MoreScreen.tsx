@@ -3,8 +3,9 @@ import { todayISO } from '../domain/dates';
 import { daysUntilExpiry } from '../vault/vault';
 import type { Session } from '../app/session';
 import { saveSettings, type Settings } from '../app/settings';
-import { Field, val } from './common';
+import { Field, PageHeader, val } from './common';
 import { downloadText } from './hooks';
+import { IconCheck, IconDownload, IconLink, IconLock, IconRefresh } from './icons';
 
 export interface MoreProps {
   session: Session;
@@ -76,39 +77,47 @@ export function MoreScreen(props: MoreProps) {
 
   return (
     <div class="screen">
-      <h2>More</h2>
+      <PageHeader title="More" />
+      {msg && <p class="note" role="status"><IconCheck size={16} /> {msg}</p>}
+
       <form class="card" onSubmit={saveNames}>
         <h3>Receipt details</h3>
+        <p class="muted small">Printed at the top and bottom of every receipt.</p>
         <Field label="Tuition name"><input value={tuition} onInput={(e) => setTuition(val(e))} autoComplete="off" /></Field>
         <Field label="Teacher name"><input value={teacher} onInput={(e) => setTeacher(val(e))} autoComplete="off" /></Field>
-        <button class="btn primary" type="submit">Save names</button>
+        <button class="btn primary wide" type="submit">Save names</button>
       </form>
 
       <section class="card">
         <h3>Sync</h3>
-        <button class="btn" type="button" onClick={() => session.syncNow()}>Sync now</button>
-        {days !== null && <p class={days <= 14 ? 'errors' : 'muted'}>Access token {days < 0 ? 'has expired' : `expires in ${days} day(s)`}. Create a new one in GitHub and reconnect before it expires.</p>}
+        <p class="muted small">Changes upload on their own. Use this if the status at the top looks stuck.</p>
+        <button class="btn wide" type="button" onClick={() => session.syncNow()}><IconRefresh size={20} /> Sync now</button>
+        {days !== null && (
+          <p class={days <= 14 ? 'errors' : 'muted small'}>
+            Access token {days < 0 ? 'has expired' : `expires in ${days} day(s)`}. Create a new one in GitHub and reconnect before it expires.
+          </p>
+        )}
       </section>
 
       <section class="card">
         <h3>Backup</h3>
         <p class="muted small">Your data is also kept, with full history, in your private GitHub repository. This downloads a copy you can keep.</p>
-        <button class="btn" type="button" onClick={exportAll}>Export all data</button>
+        <button class="btn wide" type="button" onClick={exportAll}><IconDownload size={20} /> Export all data</button>
         <Field label="Restore from backup file"><input type="file" accept="application/json,.json" onChange={importFile} /></Field>
       </section>
 
       <section class="card">
         <h3>Lock</h3>
         {props.pinOn ? (
-          <div class="row">
-            <button class="btn" type="button" onClick={props.onLock}>Lock now</button>
-            <button class="btn ghost" type="button" onClick={turnOffPin}>Turn off PIN lock</button>
+          <div class="form-actions">
+            <button class="btn wide" type="button" onClick={props.onLock}><IconLock size={20} /> Lock now</button>
+            <button class="btn quiet wide" type="button" onClick={turnOffPin}>Turn off PIN lock</button>
           </div>
         ) : (
-          <form onSubmit={turnOnPin}>
-            <p class="muted small">The app opens straight in. Add a PIN if others use this phone.</p>
+          <form class="form-actions" onSubmit={turnOnPin}>
+            <p class="muted small">The app opens straight in. Add a PIN if other people use this phone.</p>
             <Field label="New PIN (4 to 8 digits)"><input type="password" inputMode="numeric" value={pin} onInput={(e) => setPin(val(e))} autoComplete="off" /></Field>
-            <button class="btn" type="submit">Turn on PIN lock</button>
+            <button class="btn wide" type="submit">Turn on PIN lock</button>
           </form>
         )}
       </section>
@@ -119,18 +128,18 @@ export function MoreScreen(props: MoreProps) {
         {link ? (
           <>
             <Field label="Setup link"><input readOnly value={link} onFocus={(e) => (e.target as HTMLInputElement).select()} /></Field>
-            <button class="btn" type="button" onClick={copyLink}>Copy link</button>
+            <button class="btn wide" type="button" onClick={copyLink}><IconLink size={20} /> Copy link</button>
           </>
         ) : (
-          <button class="btn" type="button" onClick={() => setLink(props.setupLink())}>Show setup link for another phone</button>
+          <button class="btn wide" type="button" onClick={() => setLink(props.setupLink())}><IconLink size={20} /> Show setup link for another phone</button>
         )}
       </section>
 
       <section class="card">
         <h3>This phone</h3>
-        <button class="btn danger" type="button" onClick={() => { if (window.confirm('Remove the saved token and the offline copy from this phone? Unsynced changes will be lost.')) props.onDisconnect(); }}>Disconnect this phone</button>
+        <p class="muted small">Removes the saved token and the offline copy from this phone. Your data stays safe in GitHub.</p>
+        <button class="btn danger wide" type="button" onClick={() => { if (window.confirm('Remove the saved token and the offline copy from this phone? Unsynced changes will be lost.')) props.onDisconnect(); }}>Disconnect this phone</button>
       </section>
-      {msg && <p class="ok" role="status">{msg}</p>}
     </div>
   );
 }

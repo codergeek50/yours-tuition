@@ -20,7 +20,7 @@ const segDist = (px, py, ax, ay, bx, by) => {
 };
 
 function icon(size) {
-  const bg = [0x1f, 0x4e, 0x5f], fg = [255, 255, 255];
+  const bg = [0x03, 0x6b, 0x4c], fg = [255, 255, 255];
   const w = size * 0.11; // stroke half-width
   const s = size;
   const segs = [[0.3, 0.27, 0.5, 0.52], [0.7, 0.27, 0.5, 0.52], [0.5, 0.52, 0.5, 0.76]].map((v) => v.map((n) => n * s));
@@ -41,5 +41,5 @@ function icon(size) {
 }
 
 for (const size of [192, 512]) writeFileSync(`public/icon-${size}.png`, icon(size));
-writeFileSync('public/favicon.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#1f4e5f"/><path d="M19 17l13 16 13-16M32 33v16" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>');
+writeFileSync('public/favicon.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#036b4c"/><path d="M19 17l13 16 13-16M32 33v16" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>');
 console.log('icons written');
