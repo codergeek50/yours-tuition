@@ -32,14 +32,18 @@ export const IconDownload = (p: P) => <Svg {...p}><path d="M21 15v4a2 2 0 0 1-2 
 export const IconLock = (p: P) => <Svg {...p}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></Svg>;
 export const IconLink = (p: P) => <Svg {...p}><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></Svg>;
 export const IconRefresh = (p: P) => <Svg {...p}><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.3L3 16M3 21v-5h5" /></Svg>;
+export const IconHome = (p: P) => <Svg {...p}><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10v9.5h13V10" /><path d="M10 19.5v-5h4v5" /></Svg>;
+export const IconCalendar = (p: P) => <Svg {...p}><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></Svg>;
+export const IconChevronDown = (p: P) => <Svg {...p}><path d="m6 9 6 6 6-6" /></Svg>;
+export const IconUserPlus = (p: P) => <Svg {...p}><path d="M15 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4A3.5 3.5 0 0 0 4 18.5V20" /><circle cx="9.5" cy="8" r="3.5" /><path d="M19 8v6M16 11h6" /></Svg>;
 export const IconReceipt = (p: P) => <Svg {...p}><path d="M5 3v18l2-1.2 2 1.2 2-1.2 2 1.2 2-1.2 2 1.2V3l-2 1.2L14 3l-2 1.2L10 3 8 4.2z" /><path d="M9 8h6M9 12h6M9 16h3" /></Svg>;
 
-/** Brand mark: rounded tile with a "Y". */
-export function BrandMark({ size = 32 }: P) {
+/** Brand mark: rounded tile with a "Y". onDark flips it to a white tile for the blue top bar. */
+export function BrandMark({ size = 32, onDark = false }: P & { onDark?: boolean }) {
   return (
     <svg class="brand-mark" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <rect width="32" height="32" rx="9" fill="var(--primary)" />
-      <path d="M9.5 8.5 16 17l6.5-8.5M16 17v7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+      <rect width="32" height="32" rx="9" fill={onDark ? '#fff' : 'var(--primary)'} />
+      <path d="M9.5 8.5 16 17l6.5-8.5M16 17v7" stroke={onDark ? 'var(--primary)' : '#fff'} stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" />
       <circle cx="24.5" cy="24.5" r="2.4" fill="var(--accent)" />
     </svg>
   );

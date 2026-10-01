@@ -14,9 +14,9 @@ const blank = (): Draft => ({
   name: '', school: '', grade: '', guardianName: '', guardianPhone: '', monthlyFee: 0, fee: '', joinedOn: todayISO(), active: true,
 });
 
-export function StudentsScreen({ store }: { store: DataStore }) {
+export function StudentsScreen({ store, startAdding = false }: { store: DataStore; startAdding?: boolean }) {
   const { data: students, reload } = useLoad(() => store.students(), [store]);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(startAdding ? blank() : null);
   const [errors, setErrors] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [showInactive, setShowInactive] = useState(false);

@@ -14,18 +14,20 @@ import { StudentsScreen } from './ui/StudentsScreen';
 import { FeesScreen } from './ui/FeesScreen';
 import { ReportsScreen } from './ui/ReportsScreen';
 import { MoreScreen } from './ui/MoreScreen';
-import { BrandMark, IconAttendance, IconFees, IconMore, IconReports, IconStudents } from './ui/icons';
+import { HomeScreen } from './ui/HomeScreen';
+import type { Tab } from './ui/nav';
+import { BrandMark, IconAttendance, IconBack, IconFees, IconHome, IconMore, IconStudents } from './ui/icons';
 
 export interface AppDeps { fetchImpl?: typeof fetch; local?: () => LocalStore; debounceMs?: number }
 
-type Tab = 'attendance' | 'students' | 'fees' | 'reports' | 'more';
 const TABS: [Tab, string, () => preact.JSX.Element][] = [
+  ['home', 'Home', () => <IconHome />],
   ['attendance', 'Attendance', () => <IconAttendance />],
   ['students', 'Students', () => <IconStudents />],
   ['fees', 'Fees', () => <IconFees />],
-  ['reports', 'Reports', () => <IconReports />],
   ['more', 'More', () => <IconMore />],
 ];
+const TITLES: Record<Tab, string> = { home: 'YOURS Tuition', attendance: 'Attendance', students: 'Students', fees: 'Fees', reports: 'Reports', more: 'More' };
 
 function parseRepo(input: string): { owner: string; repo: string } | null {
   const m = /^(?:https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(input.trim());
@@ -181,7 +183,9 @@ function Shell(props: {
   onSetPin: (pin: string) => Promise<string | null>; onRemovePin: () => Promise<void>; setupLink: () => string; onDisconnect: () => void;
 }) {
   const { session, settings } = props;
-  const [tab, setTab] = useState<Tab>('attendance');
+  const [tab, setTab] = useState<Tab>('home');
+  const [adding, setAdding] = useState(false);
+  const goto = (t: Tab, opts?: { addStudent?: boolean }) => { setAdding(Boolean(opts?.addStudent)); setTab(t); window.scrollTo(0, 0); };
   const [sync, setSync] = useState<SyncState>(session.getState());
   const hiddenAt = useRef<number | null>(null);
 
@@ -212,7 +216,7 @@ function Shell(props: {
   return (
     <div class="shell">
       <header class="topbar">
-        <span class="brand"><BrandMark size={30} /> YOURS Tuition</span>
+        <span class="brand"><BrandMark size={32} onDark /> {TITLES[tab]}</span>
         <button type="button" class={`sync sync-${sync.status}`} onClick={() => session.syncNow()} aria-label={`Sync status: ${syncText}. Tap to sync`}>
           <span class="sync-dot" aria-hidden="true" />
           {syncText}
@@ -223,10 +227,16 @@ function Shell(props: {
       )}
       {sync.status === 'auth' && <p class="banner" role="alert">GitHub rejected the token. Your changes are saved on this phone and will upload once you reconnect with a valid token.</p>}
       <main class="content">
+        {tab === 'home' && <HomeScreen store={session.store} settings={settings} goto={goto} />}
         {tab === 'attendance' && <AttendanceScreen store={session.store} />}
-        {tab === 'students' && <StudentsScreen store={session.store} />}
+        {tab === 'students' && <StudentsScreen store={session.store} startAdding={adding} />}
         {tab === 'fees' && <FeesScreen store={session.store} settings={settings} />}
-        {tab === 'reports' && <ReportsScreen store={session.store} />}
+        {tab === 'reports' && (
+          <>
+            <div class="screen backrow"><button class="btn quiet small" type="button" onClick={() => goto('home')}><IconBack size={18} /> Home</button></div>
+            <ReportsScreen store={session.store} />
+          </>
+        )}
         {tab === 'more' && (
           <MoreScreen
             session={session} settings={settings} pinOn={props.pinOn} onSettings={props.onSettings}
@@ -237,7 +247,7 @@ function Shell(props: {
       </main>
       <nav class="tabs" aria-label="Main">
         {TABS.map(([id, label, icon]) => (
-          <button key={id} type="button" class={tab === id ? 'tab active' : 'tab'} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+          <button key={id} type="button" class={tab === id ? 'tab active' : 'tab'} aria-current={tab === id ? 'page' : undefined} onClick={() => goto(id)}>
             <span class="pill">{icon()}</span>
             {label}
           </button>

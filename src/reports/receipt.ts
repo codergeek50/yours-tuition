@@ -27,12 +27,12 @@ export function receiptHtml(p: Payment, o: ReceiptOptions): string {
   *{box-sizing:border-box}
   body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,'Noto Sans',sans-serif;margin:0;padding:16px;color:#14211c;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .box{max-width:520px;margin:0 auto;border:1px solid #cfd9d4;border-radius:14px;overflow:hidden;position:relative}
-  .band{background:#036b4c;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .band{background:#224a71;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
   .band h1{margin:0;font-size:20px;line-height:1.2;font-weight:800}
   .no{margin:0;font-size:14px;font-weight:700;white-space:nowrap;background:rgba(255,255,255,.18);padding:4px 12px;border-radius:999px}
   .amount{padding:22px 20px 8px}
   .amount small{display:block;color:#4d5f58;font-size:14px;font-weight:600}
-  .amount b{display:block;font-size:40px;line-height:1.15;font-weight:800;color:#036b4c;letter-spacing:-.01em}
+  .amount b{display:block;font-size:40px;line-height:1.15;font-weight:800;color:#224a71;letter-spacing:-.01em}
   table{width:calc(100% - 40px);margin:6px 20px 0;border-collapse:collapse}
   td{padding:11px 0;border-bottom:1px solid #e3eae6;font-size:15px}
   td:first-child{color:#4d5f58}
