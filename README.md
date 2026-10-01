@@ -24,7 +24,7 @@ The app refuses to connect to a repository that is public. A PIN is optional (Mo
 - **Students**: add name, school, class, guardian phone and monthly fee. Deactivate instead of deleting, so history stays.
 - **Fees**: pick the month, tap a student, record a payment (part payments are fine). A numbered receipt opens; tap Print / Save as PDF.
 - **Mistakes on a receipt**: void it with a reason and issue a new one. Receipt numbers are never reused or edited.
-- **Reports**: download attendance (any date range) or fees (any month) as CSV, which opens in Excel or Google Sheets.
+- **Reports**: see attendance date by date for every student (the current month by default, or any range you pick), and download it or the fees report as CSV, which opens in Excel or Google Sheets.
 - **Reminders**: for pending fees, a button opens WhatsApp with a ready message.
 - **Backup**: More, Export all data. Your data also has full history in the private repository.
 
