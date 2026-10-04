@@ -81,3 +81,21 @@ describe('setup link', () => {
     expect(decodeSetupLink('#setup=' + btoa('{"r":1}'))).toBeNull();
   });
 });
+
+describe('PIN key derivation', () => {
+  it('uses a strong, recorded iteration count', async () => {
+    const rec = await sealToken('t', '123456', { owner: 'o', repo: 'r' });
+    expect(rec.iter).toBeGreaterThanOrEqual(600000);
+  });
+  it('still opens a token sealed by the earlier version (310k iterations, no iter field)', async () => {
+    const enc = new TextEncoder();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const base = await crypto.subtle.importKey('raw', enc.encode('1234'), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode('legacy-token')));
+    const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+    const legacy = { owner: 'o', repo: 'r', salt: b64(salt), iv: b64(iv), ct: b64(ct) } as VaultRecord;
+    expect(await openToken(legacy, '1234')).toBe('legacy-token');
+  });
+});

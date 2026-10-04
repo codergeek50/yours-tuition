@@ -100,6 +100,19 @@ describe('FeesScreen', () => {
     const month = monthOf(todayISO());
     await waitFor(async () => expect((await store.payments(month)).length).toBe(1));
   });
+  it('pressing Record payment twice quickly records only one payment', async () => {
+    const store = newStore();
+    await seed(store);
+    render(<FeesScreen store={store} settings={settings} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Asha/ }));
+    fireEvent.input(await screen.findByLabelText('Amount (₹)'), { target: { value: '300' } });
+    const form = screen.getByRole('button', { name: 'Record payment' }).closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await screen.findByText(/Receipt #1/);
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await store.payments(monthOf(todayISO()))).length).toBe(1);
+  });
   it('voiding requires a reason and shows the receipt as void', async () => {
     const store = newStore();
     const { a } = await seed(store);

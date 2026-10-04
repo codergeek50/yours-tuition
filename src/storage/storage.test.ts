@@ -108,3 +108,16 @@ describe('GitHubStorage', () => {
     expect(g.tokenExpiry?.getUTCFullYear()).toBe(2027);
   });
 });
+
+describe('GitHubStorage large files', () => {
+  it('reads a file over 1 MB through the blob endpoint', async () => {
+    const g = new GitHubStorage({
+      owner: 'me', repo: 'data', token: 'tok',
+      fetchImpl: mockFetch({
+        'GET /repos/me/data/contents/big.json': () => json({ content: '', encoding: 'none', size: 2_000_000, sha: 'abc' }),
+        'GET /repos/me/data/git/blobs/abc': () => json({ content: b64('{"big":true}'), encoding: 'base64' }),
+      }),
+    });
+    expect(await g.read('big.json')).toEqual({ content: '{"big":true}', sha: 'abc' });
+  });
+});

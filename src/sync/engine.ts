@@ -34,7 +34,9 @@ export class SyncEngine {
         const existing = await this.local.get(path);
         if (existing?.dirty) return;
         const file = await this.remote.read(path);
-        if (file) await this.local.put(path, { content: file.content, sha: file.sha, dirty: false });
+        if (!file) return;
+        // Decided atomically: an edit made while we were waiting on the network must win.
+        await this.local.update(path, (cur) => (cur?.dirty ? undefined : { content: file.content, sha: file.sha, dirty: false }));
       }),
     );
   }
@@ -61,15 +63,23 @@ export class SyncEngine {
     let entry = (await this.local.get(path))!;
     for (let attempt = 0; attempt < MAX_MERGE_ATTEMPTS; attempt++) {
       try {
-        const { sha } = await this.remote.write(path, entry.content, entry.sha);
-        await this.local.put(path, { content: entry.content, sha, dirty: false });
+        const sent = entry.content;
+        const { sha } = await this.remote.write(path, sent, entry.sha);
+        // If the file changed while the upload was in flight, keep the newer text and upload it next time.
+        await this.local.update(path, (cur) =>
+          cur && cur.content !== sent ? { content: cur.content, sha, dirty: true } : { content: sent, sha, dirty: false },
+        );
         return;
       } catch (e) {
         if (!(e instanceof ConflictError)) throw e;
         const remote = await this.remote.read(path);
-        const content = remote ? mergeFile(path, remote.content, entry.content) : entry.content;
-        entry = { content, sha: remote?.sha, dirty: true };
-        await this.local.put(path, entry);
+        let merged = entry.content;
+        const updated = await this.local.update(path, (cur) => {
+          const base = cur?.content ?? entry.content;
+          merged = remote ? mergeFile(path, remote.content, base) : base;
+          return { content: merged, sha: remote?.sha, dirty: true };
+        });
+        entry = updated ?? { content: merged, sha: remote?.sha, dirty: true };
       }
     }
     throw new ConflictError();

@@ -7,6 +7,7 @@
   --surface-2: oklch(0.955 0.01 250);
   --line: oklch(0.915 0.012 250);
   --line-strong: oklch(0.84 0.016 250);
+  --field-border: oklch(0.64 0.025 255); /* 3:1 against white, so form fields are clearly visible */
 
   --ink: oklch(0.235 0.022 255);
   --muted: oklch(0.47 0.02 255);
@@ -177,7 +178,7 @@ button, input, select { font: inherit; color: inherit; letter-spacing: inherit; 
 .field-hint { font-size: var(--t-xs); color: var(--muted); line-height: 1.4; }
 input:not([type='checkbox']):not([type='file']), select {
   width: 100%; min-height: var(--tap); padding: 8px 14px;
-  border: 1px solid var(--line-strong); border-radius: var(--r-ctl);
+  border: 1px solid var(--field-border); border-radius: var(--r-ctl);
   background: var(--surface); font-size: var(--t-base);
 }
 input::placeholder { color: var(--muted); opacity: 1; }

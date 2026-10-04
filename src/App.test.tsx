@@ -107,6 +107,22 @@ describe('the teacher never sees setup', () => {
   });
 });
 
+describe('setup links cannot take over a phone that is already set up', () => {
+  it('ignores a link for another repository and keeps the existing connection', async () => {
+    const first = render(<App deps={deps(repoFetch(true))} />);
+    await fillConnect();
+    await inApp();
+    first.unmount();
+    history.replaceState(null, '', encodeSetupLink(location.origin + '/', 'attacker/their-repo', 'github_pat_evil'));
+    render(<App deps={deps(repoFetch(true))} />);
+    await screen.findByText(/already set up/i);
+    expect(loadVault()!.owner).toBe('me');
+    expect(location.hash).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await inApp();
+  });
+});
+
 describe('optional PIN', () => {
   async function connected() {
     render(<App deps={deps(repoFetch(true))} />);

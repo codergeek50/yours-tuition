@@ -6,20 +6,23 @@ export interface VaultRecord {
   /** 'device': locked by a non-extractable key kept on this phone (no PIN). 'pin': locked by the PIN. */
   mode?: 'pin' | 'device';
   salt?: string; // base64, PIN mode only
+  /** PBKDF2 iterations used; absent on records made before this was recorded (310,000). */
+  iter?: number;
   iv: string; // base64
   ct: string; // base64 AES-GCM ciphertext
 }
 
 const KEY = 'yt.vault';
-const ITERATIONS = 310_000;
+const ITERATIONS = 600_000;
+const LEGACY_ITERATIONS = 310_000;
 
 const toB64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
 const fromB64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
-async function deriveKey(pin: string, salt: BufferSource): Promise<CryptoKey> {
+async function deriveKey(pin: string, salt: BufferSource, iterations: number): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
     base,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -35,14 +38,14 @@ export async function sealToken(token: string, pin: string, repo: { owner: strin
   if (!isValidPin(pin)) throw new Error('PIN must be 4 to 8 digits');
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(pin, salt);
+  const key = await deriveKey(pin, salt, ITERATIONS);
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token)));
-  return { owner: repo.owner, repo: repo.repo, mode: 'pin', salt: toB64(salt), iv: toB64(iv), ct: toB64(ct) };
+  return { owner: repo.owner, repo: repo.repo, mode: 'pin', iter: ITERATIONS, salt: toB64(salt), iv: toB64(iv), ct: toB64(ct) };
 }
 
 export async function openToken(rec: VaultRecord, pin: string): Promise<string> {
   try {
-    const key = await deriveKey(pin, fromB64(rec.salt ?? ''));
+    const key = await deriveKey(pin, fromB64(rec.salt ?? ''), rec.iter ?? LEGACY_ITERATIONS);
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, key, fromB64(rec.ct));
     return new TextDecoder().decode(pt);
   } catch {

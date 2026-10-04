@@ -39,7 +39,10 @@ export function createSession(
     emit({ ...state, status: 'syncing' });
     try {
       const res = await engine.sync();
-      emit({ status: res.status, pending: await engine.pendingCount() });
+      const pending = await engine.pendingCount();
+      emit({ status: res.status, pending });
+      // A change made while this run was in flight is still waiting: schedule another pass.
+      if (res.status === 'synced' && pending > 0) schedule();
     } finally {
       running = false;
     }

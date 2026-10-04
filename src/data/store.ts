@@ -30,12 +30,16 @@ export class DataStore {
     return e ? (JSON.parse(e.content) as T) : fallback;
   }
 
+  /** Atomic read-modify-write: two saves at the same instant can never overwrite each other. */
   private async mutate<T>(path: string, fallback: T, fn: (cur: T) => T): Promise<T> {
-    const e = await this.local.get(path);
-    const next = fn(e ? (JSON.parse(e.content) as T) : fallback);
-    await this.local.put(path, { content: JSON.stringify(next, null, 2), sha: e?.sha, dirty: true });
+    let result!: T;
+    await this.local.update(path, (e) => {
+      const next = fn(e ? (JSON.parse(e.content) as T) : fallback);
+      result = next;
+      return { content: JSON.stringify(next, null, 2), sha: e?.sha, dirty: true };
+    });
     this.onChange();
-    return next;
+    return result;
   }
 
   // ---- students
@@ -113,26 +117,29 @@ export class DataStore {
     const meta = await this.mutate<Meta>(META, { schemaVersion: 1, nextReceiptNumber: 1 }, (m) => ({ ...m, nextReceiptNumber: m.nextReceiptNumber + 1 }));
     const number = meta.nextReceiptNumber - 1;
 
-    const existing = await this.payments(input.forMonth);
-    const alreadyPaid = existing.filter((p) => p.studentId === student.id && !p.receipt.voided).reduce((n, p) => n + p.amount, 0);
-    const payment: Payment = {
-      id: nextId(),
-      studentId: student.id,
-      forMonth: input.forMonth,
-      amount: input.amount,
-      paidOn: input.paidOn,
-      mode: input.mode,
-      receipt: {
-        number,
-        issuedOn: input.paidOn,
-        studentName: student.name,
-        amount: input.amount,
+    let payment!: Payment;
+    await this.mutate<PaymentsFile>(paymentsPath(input.forMonth), { payments: [] }, (f) => {
+      // The balance is worked out inside the same atomic step that stores the payment.
+      const alreadyPaid = f.payments.filter((p) => p.studentId === student.id && !p.receipt.voided).reduce((n, p) => n + p.amount, 0);
+      payment = {
+        id: nextId(),
+        studentId: student.id,
         forMonth: input.forMonth,
-        balanceAfter: student.monthlyFee - alreadyPaid - input.amount,
-        voided: false,
-      },
-    };
-    await this.mutate<PaymentsFile>(paymentsPath(input.forMonth), { payments: [] }, (f) => ({ payments: [...f.payments, payment] }));
+        amount: input.amount,
+        paidOn: input.paidOn,
+        mode: input.mode,
+        receipt: {
+          number,
+          issuedOn: input.paidOn,
+          studentName: student.name,
+          amount: input.amount,
+          forMonth: input.forMonth,
+          balanceAfter: student.monthlyFee - alreadyPaid - input.amount,
+          voided: false,
+        },
+      };
+      return { payments: [...f.payments, payment] };
+    });
     return payment;
   }
 
@@ -165,19 +172,56 @@ export class DataStore {
 
   /** Replaces the working copy with the backup and marks every file for upload. */
   async importAll(text: string): Promise<void> {
+    const reject = () => new Error('This is not a YOURS Tuition backup file');
     let parsed: BackupFile;
     try {
       parsed = JSON.parse(text) as BackupFile;
     } catch {
-      throw new Error('This is not a YOURS Tuition backup file');
+      throw reject();
     }
-    if (parsed?.app !== 'yours-tuition' || typeof parsed.files !== 'object' || parsed.files === null) {
-      throw new Error('This is not a YOURS Tuition backup file');
-    }
-    const existing = await this.local.all();
+    if (parsed?.app !== 'yours-tuition' || typeof parsed.files !== 'object' || parsed.files === null || Array.isArray(parsed.files)) throw reject();
+
+    // Check everything first. Only the app's own files are accepted, so a doctored backup cannot write elsewhere.
+    const checked: [string, string, Record<string, unknown>][] = [];
     for (const [path, content] of Object.entries(parsed.files)) {
+      if (!ALLOWED_PATH.test(path) || typeof content !== 'string' || content.length > MAX_FILE_CHARS) throw reject();
+      let doc: unknown;
+      try {
+        doc = JSON.parse(content);
+      } catch {
+        throw reject();
+      }
+      if (!hasExpectedShape(path, doc)) throw reject();
+      checked.push([path, content, doc as Record<string, unknown>]);
+    }
+
+    // Never let a restored counter reuse a receipt number that is already on a restored payment.
+    let highest = 0;
+    for (const [path, , doc] of checked) {
+      if (path.startsWith('payments/')) for (const p of doc.payments as Payment[]) highest = Math.max(highest, Number(p?.receipt?.number) || 0);
+    }
+    const files = new Map(checked.map(([p, c]) => [p, c]));
+    const metaDoc = (checked.find(([p]) => p === META)?.[2] ?? { schemaVersion: 1, nextReceiptNumber: 1 }) as unknown as Meta;
+    if (highest > 0 || files.has(META)) {
+      files.set(META, JSON.stringify({ ...metaDoc, nextReceiptNumber: Math.max(metaDoc.nextReceiptNumber, highest + 1) }, null, 2));
+    }
+
+    const existing = await this.local.all();
+    for (const [path, content] of files) {
       await this.local.put(path, { content, sha: existing[path]?.sha, dirty: true });
     }
     this.onChange();
   }
+}
+
+const ALLOWED_PATH = /^(students\.json|meta\.json|(attendance|payments)\/\d{4}-(0[1-9]|1[0-2])\.json)$/;
+const MAX_FILE_CHARS = 5_000_000;
+
+function hasExpectedShape(path: string, doc: unknown): boolean {
+  if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) return false;
+  const d = doc as Record<string, unknown>;
+  if (path === STUDENTS) return Array.isArray(d.students);
+  if (path === META) return Number.isInteger(d.nextReceiptNumber) && (d.nextReceiptNumber as number) >= 1;
+  if (path.startsWith('attendance/')) return typeof d.days === 'object' && d.days !== null && !Array.isArray(d.days);
+  return Array.isArray(d.payments);
 }

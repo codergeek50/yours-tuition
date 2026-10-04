@@ -39,13 +39,25 @@ It works offline. Changes wait on the phone and upload when you are back online 
 - Tokens expire. The app warns you 14 days before; create a new one and reconnect.
 - Student records are children's data. Collect only what you need.
 
-## Develop
+## Develop and maintain
 
 ```bash
 npm install
 npm run dev        # local dev server
 npm test           # unit and component tests
 npm run build      # production build into dist/
+npm run verify     # typecheck, tests, colour contrast, build and dependency audit in one go
+npm run contrast   # WCAG AA check of every colour pair
 ```
 
-Stack: Vite, TypeScript, Preact, a service worker for offline use, IndexedDB for the on-phone copy, and the GitHub REST API for storage.
+`npm run verify -- --e2e` also runs the end-to-end tests against a real **private** throwaway GitHub repo (set `TEST_DATA_REPO` and `TEST_GITHUB_TOKEN`).
+
+Stack: Vite, TypeScript, Preact, a service worker for offline use, IndexedDB for the on-phone copy, the GitHub REST API for storage, DM Sans and Inter for type.
+
+### What the safety net covers
+
+- Saves are atomic on the phone, so two quick taps can never produce the same receipt number or overwrite each other.
+- Sync never overwrites an edit made while it was running; conflicts are merged, not dropped.
+- Restoring a backup accepts only the app's own files and never reuses a receipt number.
+- A setup link cannot repoint a phone that is already set up.
+- The app refuses to run against a public data repository.

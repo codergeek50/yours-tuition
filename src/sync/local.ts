@@ -11,6 +11,11 @@ export interface LocalStore {
   put(path: string, entry: LocalEntry): Promise<void>;
   all(): Promise<Record<string, LocalEntry>>;
   clear(): Promise<void>;
+  /**
+   * Atomic read-modify-write of one file. `fn` must be synchronous. Return the new entry, or
+   * undefined to leave the file as it is. Nothing else can change the file between the read and the write.
+   */
+  update(path: string, fn: (current: LocalEntry | undefined) => LocalEntry | undefined): Promise<LocalEntry | undefined>;
 }
 
 export class MemoryLocalStore implements LocalStore {
@@ -19,6 +24,12 @@ export class MemoryLocalStore implements LocalStore {
   async put(path: string, entry: LocalEntry) { this.m.set(path, { ...entry }); }
   async all() { return Object.fromEntries(this.m); }
   async clear() { this.m.clear(); }
+  async update(path: string, fn: (current: LocalEntry | undefined) => LocalEntry | undefined) {
+    const current = this.m.get(path);
+    const next = fn(current ? { ...current } : undefined);
+    if (next) this.m.set(path, { ...next });
+    return next ?? current;
+  }
 }
 
 const STORE = 'files';
@@ -54,6 +65,24 @@ export class IdbLocalStore implements LocalStore {
   get(path: string) { return this.run<LocalEntry | undefined>('readonly', (s) => s.get(path)); }
   async put(path: string, entry: LocalEntry) { await this.run('readwrite', (s) => s.put(entry, path)); }
   async clear() { await this.run('readwrite', (s) => s.clear()); }
+  async update(path: string, fn: (current: LocalEntry | undefined) => LocalEntry | undefined) {
+    const db = await this.db();
+    return new Promise<LocalEntry | undefined>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      let result: LocalEntry | undefined;
+      const get = store.get(path);
+      get.onsuccess = () => {
+        const current = get.result as LocalEntry | undefined;
+        const next = fn(current);
+        if (next) store.put(next, path);
+        result = next ?? current;
+      };
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
   async all() {
     const db = await this.db();
     return new Promise<Record<string, LocalEntry>>((resolve, reject) => {

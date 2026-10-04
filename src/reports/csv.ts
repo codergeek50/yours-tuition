@@ -4,7 +4,8 @@ import { balanceFor } from '../domain/fees';
 /** Quote cells for CSV and neutralise spreadsheet formulas (= + - @) typed into names or schools. */
 function cell(v: string | number): string {
   let s = String(v);
-  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  // Real numbers are written as they are (a balance of -500 must stay -500); only text can be a formula.
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

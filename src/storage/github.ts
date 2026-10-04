@@ -63,7 +63,14 @@ export class GitHubStorage implements Storage {
     const res = await this.call(`/contents/${path}`, { cache: 'no-store' });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`GitHub read failed (${res.status})`);
-    const body = (await res.json()) as { content: string; sha: string };
+    const body = (await res.json()) as { content: string; sha: string; encoding?: string; size?: number };
+    // Files over 1 MB come back without content; fetch them as a blob instead.
+    if (body.encoding === 'none' || (body.content === '' && (body.size ?? 0) > 0)) {
+      const blobRes = await this.call(`/git/blobs/${body.sha}`, { cache: 'no-store' });
+      if (!blobRes.ok) throw new Error(`GitHub read failed (${blobRes.status})`);
+      const blob = (await blobRes.json()) as { content: string };
+      return { content: b64ToUtf8(blob.content), sha: body.sha };
+    }
     return { content: b64ToUtf8(body.content), sha: body.sha };
   }
 

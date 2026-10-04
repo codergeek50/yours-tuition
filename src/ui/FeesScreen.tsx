@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import type { PayMode, Payment, Student } from '../domain/types';
 import { addMonths, monthLabel, monthOf, todayISO } from '../domain/dates';
 import { balanceFor } from '../domain/fees';
@@ -98,10 +98,16 @@ function StudentFees(props: {
   const [voiding, setVoiding] = useState<string | null>(null);
   const [reason, setReason] = useState('');
 
+  const submitting = useRef(false);
+  const [busy, setBusy] = useState(false);
+
   async function record(e: Event) {
     e.preventDefault();
+    if (submitting.current) return; // a double tap must not record the payment twice
     const n = parseRupees(amount);
     if (n === null) return setErrors(['Enter an amount above zero']);
+    submitting.current = true;
+    setBusy(true);
     try {
       const p = await store.recordPayment({ studentId: student.id, forMonth: month, amount: n, paidOn, mode });
       setErrors([]);
@@ -110,6 +116,9 @@ function StudentFees(props: {
       setReceipt(p);
     } catch (err) {
       setErrors([(err as Error).message]);
+    } finally {
+      submitting.current = false;
+      setBusy(false);
     }
   }
 
@@ -163,7 +172,7 @@ function StudentFees(props: {
           </Field>
         </div>
         <Errors errors={errors} />
-        <button class="btn primary wide" type="submit">Record payment</button>
+        <button class="btn primary wide" type="submit" disabled={busy}>Record payment</button>
       </form>
 
       <h3>Payments this month</h3>

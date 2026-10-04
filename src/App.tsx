@@ -98,8 +98,13 @@ export function App({ deps = {} }: { deps?: AppDeps }) {
         const link = setup.current;
         history.replaceState(null, '', location.pathname + location.search); // drop the token from the address bar
         setup.current = null;
-        const err = await connect(link.repo, link.token);
-        if (err) setProblem(err);
+        if (vault) {
+          // Never let a link silently repoint a phone that already holds data.
+          setProblem(`This phone is already set up with ${vault.owner}/${vault.repo}, so the setup link was ignored. Choose Try again to open the app as it is, or Reconnect to start over (this removes the data stored on this phone; it stays safe in GitHub).`);
+        } else {
+          const err = await connect(link.repo, link.token);
+          if (err) setProblem(err);
+        }
       } else if (vault && !needsPin(vault)) {
         const err = await open(vault, await openTokenDevice(vault));
         if (err) setProblem(err);

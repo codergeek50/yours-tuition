@@ -21,7 +21,7 @@ export function receiptHtml(p: Payment, o: ReceiptOptions): string {
   ];
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Receipt ${r.number}</title>
+<title>Receipt ${esc(String(r.number))}</title>
 <style>
   @page{margin:14mm}
   *{box-sizing:border-box}
@@ -45,7 +45,7 @@ export function receiptHtml(p: Payment, o: ReceiptOptions): string {
 </style></head><body>
 <div class="box">
   ${r.voided ? '<div class="void">VOID</div>' : ''}
-  <div class="band"><h1>${esc(o.tuitionName)}</h1><p class="no">Receipt No. ${r.number}</p></div>
+  <div class="band"><h1>${esc(o.tuitionName)}</h1><p class="no">Receipt No. ${esc(String(r.number))}</p></div>
   <div class="amount"><small>Amount received</small><b>${esc(formatRupees(r.amount))}</b></div>
   ${r.voided ? `<p class="voidnote">VOID${r.voidReason ? ` - ${esc(r.voidReason)}` : ''}</p>` : ''}
   <table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>
