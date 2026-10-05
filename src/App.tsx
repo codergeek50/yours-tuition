@@ -14,6 +14,7 @@ import { StudentsScreen } from './ui/StudentsScreen';
 import { FeesScreen } from './ui/FeesScreen';
 import { ReportsScreen } from './ui/ReportsScreen';
 import { MoreScreen } from './ui/MoreScreen';
+import { TeachersScreen } from './ui/TeachersScreen';
 import { HomeScreen } from './ui/HomeScreen';
 import type { Tab } from './ui/nav';
 import { BrandMark, IconAttendance, IconBack, IconFees, IconHome, IconMore, IconStudents } from './ui/icons';
@@ -27,7 +28,7 @@ const TABS: [Tab, string, () => preact.JSX.Element][] = [
   ['fees', 'Fees', () => <IconFees />],
   ['more', 'More', () => <IconMore />],
 ];
-const TITLES: Record<Tab, string> = { home: 'YOURS Tuition', attendance: 'Attendance', students: 'Students', fees: 'Fees', reports: 'Reports', more: 'More' };
+const TITLES: Record<Tab, string> = { home: 'YOURS Tuition', attendance: 'Attendance', students: 'Students', fees: 'Fees', reports: 'Reports', teachers: 'Visiting teachers', more: 'More' };
 
 function parseRepo(input: string): { owner: string; repo: string } | null {
   const m = /^(?:https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(input.trim());
@@ -240,6 +241,12 @@ function Shell(props: {
           <>
             <div class="screen backrow"><button class="btn quiet small" type="button" onClick={() => goto('home')}><IconBack size={18} /> Home</button></div>
             <ReportsScreen store={session.store} />
+          </>
+        )}
+        {tab === 'teachers' && (
+          <>
+            <div class="screen backrow"><button class="btn quiet small" type="button" onClick={() => goto('home')}><IconBack size={18} /> Home</button></div>
+            <TeachersScreen store={session.store} />
           </>
         )}
         {tab === 'more' && (

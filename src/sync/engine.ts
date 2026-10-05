@@ -5,9 +5,10 @@ import { mergeFile } from './merge';
 export type SyncStatus = 'synced' | 'offline' | 'auth' | 'error';
 export interface SyncResult { status: SyncStatus; pushed: number }
 
-const ROOT_FILES = ['students.json', 'meta.json'];
-const DIRS = ['attendance', 'payments'];
-const MAX_MERGE_ATTEMPTS = 3;
+const ROOT_FILES = ['students.json', 'meta.json', 'teachers.json'];
+const DIRS = ['attendance', 'payments', 'visits'];
+const MAX_MERGE_ATTEMPTS = 5;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** meta.json goes first so a receipt number is never reused if the payments write fails. */
 const pushOrder = (a: string, b: string) => Number(b === 'meta.json') - Number(a === 'meta.json') || a.localeCompare(b);
@@ -80,6 +81,8 @@ export class SyncEngine {
           return { content: merged, sha: remote?.sha, dirty: true };
         });
         entry = updated ?? { content: merged, sha: remote?.sha, dirty: true };
+        // Another writer is active: wait a moment (with jitter) so the retries do not collide again.
+        if (attempt < MAX_MERGE_ATTEMPTS - 1) await pause(40 + Math.random() * 120);
       }
     }
     throw new ConflictError();

@@ -1,15 +1,18 @@
-import type { AttendanceFile, ISODate, Mark, Meta, MonthKey, PayMode, Payment, PaymentsFile, Student, StudentsFile } from '../domain/types';
+import type { AttendanceFile, ISODate, Mark, Meta, MonthKey, PayMode, Payment, PaymentsFile, Student, StudentsFile, Teacher, TeachersFile, Visit, VisitsFile } from '../domain/types';
 import { isValidISODate, monthOf, monthsInRange } from '../domain/dates';
 import { nextId } from '../domain/fees';
-import { validatePayment, validateStudent } from '../domain/validate';
+import { validatePayment, validateStudent, validateTeacher, validateVisit } from '../domain/validate';
 import type { LocalStore } from '../sync/local';
 
 const STUDENTS = 'students.json';
 const META = 'meta.json';
 const attendancePath = (m: MonthKey) => `attendance/${m}.json`;
 const paymentsPath = (m: MonthKey) => `payments/${m}.json`;
+const TEACHERS = 'teachers.json';
+const visitsPath = (m: MonthKey) => `visits/${m}.json`;
 
 export interface PaymentInput { studentId: string; forMonth: MonthKey; amount: number; paidOn: ISODate; mode: PayMode }
+export interface VisitInput { teacherId: string; date: ISODate; hours: number; amount: number; note: string }
 export interface BackupFile { app: 'yours-tuition'; version: 1; exportedAt: string; files: Record<string, string> }
 
 /**
@@ -161,6 +164,80 @@ export class DataStore {
     return undefined;
   }
 
+  // ---- visiting teachers (paid per visit)
+
+  async teachers(): Promise<Teacher[]> {
+    return (await this.load<TeachersFile>(TEACHERS, { teachers: [] })).teachers;
+  }
+
+  async saveTeacher(input: Omit<Teacher, 'id' | 'updatedAt'> & { id?: string }): Promise<Teacher> {
+    const teacher: Teacher = { ...input, id: input.id ?? nextId(), updatedAt: new Date().toISOString() };
+    const errs = validateTeacher(teacher);
+    if (errs.length) throw new Error(errs.map((e) => e.message).join('. '));
+    await this.mutate<TeachersFile>(TEACHERS, { teachers: [] }, (f) => {
+      const exists = f.teachers.some((t) => t.id === teacher.id);
+      return { teachers: exists ? f.teachers.map((t) => (t.id === teacher.id ? teacher : t)) : [...f.teachers, teacher] };
+    });
+    return teacher;
+  }
+
+  async setTeacherActive(id: string, active: boolean): Promise<void> {
+    const t = (await this.teachers()).find((x) => x.id === id);
+    if (!t) throw new Error('Teacher not found');
+    await this.saveTeacher({ ...t, active });
+  }
+
+  /** Visits of a month, newest first. Deleted visits are hidden here but kept in the file. */
+  async visits(month: MonthKey): Promise<Visit[]> {
+    const file = await this.load<VisitsFile>(visitsPath(month), { visits: [] });
+    return file.visits
+      .filter((v) => !v.deleted)
+      .sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async visitMonths(): Promise<MonthKey[]> {
+    const months: MonthKey[] = [];
+    for (const m of await this.monthsOf('visits/')) if ((await this.visits(m)).length) months.push(m);
+    return months;
+  }
+
+  async recordVisit(input: VisitInput): Promise<Visit> {
+    const visit: Visit = { ...input, id: nextId(), deleted: false, updatedAt: new Date().toISOString() };
+    const errs = validateVisit(visit);
+    if (errs.length) throw new Error(errs.map((e) => e.message).join('. '));
+    if (!(await this.teachers()).some((t) => t.id === visit.teacherId)) throw new Error('Teacher not found');
+    await this.mutate<VisitsFile>(visitsPath(monthOf(visit.date)), { visits: [] }, (f) => ({ visits: [...f.visits, visit] }));
+    return visit;
+  }
+
+  /** Edit a visit. Changing the date to another month moves it between month files (added first, then removed, so a crash never loses it). */
+  async updateVisit(id: string, month: MonthKey, patch: Partial<Pick<Visit, 'teacherId' | 'date' | 'hours' | 'amount' | 'note'>>): Promise<Visit> {
+    const current = (await this.visits(month)).find((v) => v.id === id);
+    if (!current) throw new Error('Visit not found');
+    const next: Visit = { ...current, ...patch, updatedAt: new Date().toISOString() };
+    const errs = validateVisit(next);
+    if (errs.length) throw new Error(errs.map((e) => e.message).join('. '));
+    if (!(await this.teachers()).some((t) => t.id === next.teacherId)) throw new Error('Teacher not found');
+    const newMonth = monthOf(next.date);
+    if (newMonth === month) {
+      await this.mutate<VisitsFile>(visitsPath(month), { visits: [] }, (f) => ({ visits: f.visits.map((v) => (v.id === id ? next : v)) }));
+    } else {
+      await this.mutate<VisitsFile>(visitsPath(newMonth), { visits: [] }, (f) => ({ visits: [...f.visits.filter((v) => v.id !== id), next] }));
+      await this.mutate<VisitsFile>(visitsPath(month), { visits: [] }, (f) => ({
+        visits: f.visits.map((v) => (v.id === id ? { ...v, deleted: true, updatedAt: next.updatedAt } : v)),
+      }));
+    }
+    return next;
+  }
+
+  async deleteVisit(id: string, month: MonthKey): Promise<void> {
+    const exists = (await this.visits(month)).some((v) => v.id === id);
+    if (!exists) throw new Error('Visit not found');
+    await this.mutate<VisitsFile>(visitsPath(month), { visits: [] }, (f) => ({
+      visits: f.visits.map((v) => (v.id === id ? { ...v, deleted: true, updatedAt: new Date().toISOString() } : v)),
+    }));
+  }
+
   // ---- backup and restore
 
   async exportAll(): Promise<string> {
@@ -214,7 +291,7 @@ export class DataStore {
   }
 }
 
-const ALLOWED_PATH = /^(students\.json|meta\.json|(attendance|payments)\/\d{4}-(0[1-9]|1[0-2])\.json)$/;
+const ALLOWED_PATH = /^(students\.json|meta\.json|teachers\.json|(attendance|payments|visits)\/\d{4}-(0[1-9]|1[0-2])\.json)$/;
 const MAX_FILE_CHARS = 5_000_000;
 
 function hasExpectedShape(path: string, doc: unknown): boolean {
@@ -222,6 +299,8 @@ function hasExpectedShape(path: string, doc: unknown): boolean {
   const d = doc as Record<string, unknown>;
   if (path === STUDENTS) return Array.isArray(d.students);
   if (path === META) return Number.isInteger(d.nextReceiptNumber) && (d.nextReceiptNumber as number) >= 1;
+  if (path === TEACHERS) return Array.isArray(d.teachers);
+  if (path.startsWith('visits/')) return Array.isArray(d.visits);
   if (path.startsWith('attendance/')) return typeof d.days === 'object' && d.days !== null && !Array.isArray(d.days);
   return Array.isArray(d.payments);
 }

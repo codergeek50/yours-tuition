@@ -25,6 +25,7 @@ The app refuses to connect to a repository that is public. A PIN is optional (Mo
 - **Fees**: pick the month, tap a student, record a payment (part payments are fine). A numbered receipt opens; tap Print / Save as PDF.
 - **Mistakes on a receipt**: void it with a reason and issue a new one. Receipt numbers are never reused or edited.
 - **Reports**: see attendance date by date for every student (the current month by default, or any range you pick), and download it or the fees report as CSV, which opens in Excel or Google Sheets.
+- **Visiting teachers**: for teachers who come in on specific days (special classes) and are paid per visit. Add the teacher once, then tap Record visit: choose the teacher, the day, the hours (quick buttons for 1, 1.5, 2, 3, 4) and the amount paid (pre-filled from their usual amount). The month view shows what you paid each teacher and in total, and you can download the visits or a payout summary as CSV. Visits can be edited or deleted.
 - **Reminders**: for pending fees, a button opens WhatsApp with a ready message.
 - **Backup**: More, Export all data. Your data also has full history in the private repository.
 

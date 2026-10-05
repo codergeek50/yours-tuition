@@ -5,14 +5,14 @@ import type { DataStore } from '../data/store';
 import type { Settings } from '../app/settings';
 import { useLoad } from './hooks';
 import type { Goto } from './nav';
-import { IconAttendance, IconDownload, IconFees, IconReports, IconStudents, IconUserPlus } from './icons';
+import { IconAttendance, IconFees, IconReports, IconStudents, IconTeacher, IconUserPlus } from './icons';
 
 export function HomeScreen({ store, settings, goto }: { store: DataStore; settings: Settings; goto: Goto }) {
   const today = todayISO();
   const month = monthOf(today);
   const { data } = useLoad(async () => {
-    const [students, attendance, payments] = await Promise.all([store.students(), store.attendance(month), store.payments(month)]);
-    return { students, day: attendance.days[today], payments };
+    const [students, attendance, payments, visits] = await Promise.all([store.students(), store.attendance(month), store.payments(month), store.visits(month)]);
+    return { students, day: attendance.days[today], payments, visits };
   }, [store]);
 
   const students = data?.students ?? [];
@@ -22,6 +22,7 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
   const absent = active.filter((s) => day?.[s.id] === 'A').length;
   const leave = active.filter((s) => day?.[s.id] === 'L').length;
   const pending = active.reduce((n, s) => n + Math.max(balanceFor(s, month, data?.payments ?? []), 0), 0);
+  const teacherPaid = (data?.visits ?? []).reduce((n, v) => n + v.amount, 0);
   const name = settings.teacherName.trim();
   const dateText = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -66,8 +67,8 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
         <button type="button" class="qbtn" onClick={() => goto('reports')}>
           <span class="qcircle q3"><IconReports size={28} /></span>Reports
         </button>
-        <button type="button" class="qbtn" onClick={() => goto('more')}>
-          <span class="qcircle q4"><IconDownload size={28} /></span>Backup
+        <button type="button" class="qbtn" onClick={() => goto('teachers')}>
+          <span class="qcircle q4"><IconTeacher size={28} /></span>Teachers
         </button>
       </nav>
 
@@ -92,6 +93,11 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
           <IconReports size={64} />
           <span class="tile-sub">Download CSV</span>
           <b>Reports</b>
+        </button>
+        <button type="button" class="tile tile-wide tile-neutral" onClick={() => goto('teachers')}>
+          <IconTeacher size={64} />
+          <span class="tile-sub">{teacherPaid > 0 ? `${formatRupees(teacherPaid)} paid this month` : 'Record a visit'}</span>
+          <b>Visiting teachers</b>
         </button>
       </div>
     </div>

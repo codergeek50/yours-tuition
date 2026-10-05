@@ -425,3 +425,23 @@ thead .m-sum { font-size: var(--t-xs); color: var(--muted); }
 .greet h2 { font-size: 1.5rem; letter-spacing: -0.026em; }
 .qbtn { letter-spacing: 0.005em; }
 .table th, .matrix th { letter-spacing: 0.01em; }
+
+/* ---------- visiting teachers ---------- */
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; gap: 4px; background: var(--surface-2); border-radius: var(--r-ctl); }
+.seg button { min-height: 44px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-weight: 600; cursor: pointer; }
+.seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.seg button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chipbtn { min-height: 40px; padding: 0 14px; border: 1px solid var(--field-border); border-radius: 999px; background: var(--surface); font-weight: 600; font-size: var(--t-sm); cursor: pointer; }
+.chipbtn.on { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-ink); }
+.chipbtn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.vdate { display: grid; place-items: center; flex: none; width: 44px; height: 48px; border-radius: var(--r-ctl); background: var(--surface-2); line-height: 1.1; }
+.vdate b { font-family: var(--font-display); font-size: var(--t-lg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.vdate span { font-size: var(--t-xs); color: var(--muted); }
+.vpay { display: grid; justify-items: end; gap: 0; flex: none; }
+
+.tile-wide { grid-column: span 2; min-height: 104px; }
+.tile-neutral { background: var(--surface-2); color: var(--ink); border-color: var(--line); }

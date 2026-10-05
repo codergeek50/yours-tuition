@@ -24,6 +24,15 @@ export function mergeFile(path: string, remoteText: string, localText: string): 
     const students = byId(remote.students ?? [], local.students ?? [], (r: Json, l: Json) => ((l.updatedAt ?? '') >= (r.updatedAt ?? '') ? l : r));
     return JSON.stringify({ ...remote, ...local, students }, null, 2);
   }
+  if (path === 'teachers.json') {
+    const teachers = byId(remote.teachers ?? [], local.teachers ?? [], (r: Json, l: Json) => ((l.updatedAt ?? '') >= (r.updatedAt ?? '') ? l : r));
+    return JSON.stringify({ ...remote, ...local, teachers }, null, 2);
+  }
+  if (path.startsWith('visits/')) {
+    // A deleted visit always stays deleted; otherwise the newer edit wins.
+    const visits = byId(remote.visits ?? [], local.visits ?? [], (r: Json, l: Json) => (r.deleted ? r : l.deleted ? l : (l.updatedAt ?? '') >= (r.updatedAt ?? '') ? l : r));
+    return JSON.stringify({ ...remote, ...local, visits }, null, 2);
+  }
   if (path.startsWith('attendance/')) {
     const days: Record<string, Record<string, string>> = { ...(remote.days ?? {}) };
     for (const [date, marks] of Object.entries<Record<string, string>>(local.days ?? {})) {

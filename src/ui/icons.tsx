@@ -36,6 +36,7 @@ export const IconHome = (p: P) => <Svg {...p}><path d="M3 11.5 12 4l9 7.5" /><pa
 export const IconCalendar = (p: P) => <Svg {...p}><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></Svg>;
 export const IconChevronDown = (p: P) => <Svg {...p}><path d="m6 9 6 6 6-6" /></Svg>;
 export const IconUserPlus = (p: P) => <Svg {...p}><path d="M15 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-4A3.5 3.5 0 0 0 4 18.5V20" /><circle cx="9.5" cy="8" r="3.5" /><path d="M19 8v6M16 11h6" /></Svg>;
+export const IconTeacher = (p: P) => <Svg {...p}><path d="M12 4 2.5 9 12 14l9.5-5L12 4Z" /><path d="M6 11.5V16c0 1.4 2.7 3 6 3s6-1.6 6-3v-4.5" /><path d="M21.5 9v5" /></Svg>;
 export const IconReceipt = (p: P) => <Svg {...p}><path d="M5 3v18l2-1.2 2 1.2 2-1.2 2 1.2 2-1.2 2 1.2V3l-2 1.2L14 3l-2 1.2L10 3 8 4.2z" /><path d="M9 8h6M9 12h6M9 16h3" /></Svg>;
 
 /** Brand mark: rounded tile with a "Y". onDark flips it to a white tile for the blue top bar. */

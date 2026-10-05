@@ -183,3 +183,15 @@ describe('More', () => {
     expect(loadVault()).toBeNull();
   });
 });
+
+describe('visiting teachers navigation', () => {
+  it('opens from Home and the back button returns Home', async () => {
+    render(<App deps={deps(repoFetch(true))} />);
+    await fillConnect();
+    await inApp();
+    fireEvent.click(await screen.findByRole('button', { name: 'Teachers' }));
+    await screen.findByRole('heading', { name: 'Visiting teachers' });
+    fireEvent.click(document.querySelector('.backrow button') as HTMLButtonElement);
+    await screen.findByText(/Today at a glance/);
+  });
+});

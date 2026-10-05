@@ -45,3 +45,29 @@ export interface PaymentsFile { payments: Payment[] }
 export interface Meta { schemaVersion: 1; nextReceiptNumber: number }
 
 export interface FieldError { field: string; message: string }
+
+/** A teacher who comes in on specific days and is paid per visit. */
+export interface Teacher {
+  id: string;
+  name: string;
+  phone: string;
+  subject: string;
+  usualAmount: number; // whole rupees; only pre-fills a new visit
+  active: boolean;
+  updatedAt: string;
+}
+
+/** One day a teacher came in: hours worked and the amount paid. Deleted visits are kept (flagged) so merges stay correct. */
+export interface Visit {
+  id: string;
+  teacherId: string;
+  date: ISODate;
+  hours: number; // quarter-hour steps, above 0 and at most 24
+  amount: number; // whole rupees paid
+  note: string;
+  deleted: boolean;
+  updatedAt: string;
+}
+
+export interface TeachersFile { teachers: Teacher[] }
+export interface VisitsFile { visits: Visit[] }
