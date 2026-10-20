@@ -5,6 +5,7 @@ import { SyncEngine } from '../sync/engine';
 import { MemoryLocalStore } from '../sync/local';
 import { DataStore } from '../data/store';
 import { fakeAppsScript } from '../test-support/fakeAppsScript';
+import { tabValues } from '../../apps-script/fake-services.mjs';
 
 const mk = () => {
   const fake = fakeAppsScript();
@@ -50,6 +51,13 @@ describe('verify', () => {
       await s.verify();
       expect(s.sheetUrl).toBe('');
     }
+  });
+  it('refreshViews asks the service to rebuild the spreadsheet tabs, separately from saving', async () => {
+    const { fake, storage } = mk();
+    await storage.write('students.json', JSON.stringify({ students: [] }), undefined);
+    expect(tabValues(fake.apps, 'Students')).toBeUndefined();
+    await storage.refreshViews();
+    expect(tabValues(fake.apps, 'Students')).toBeDefined();
   });
   it('a wrong key is an AuthError', async () => {
     const fake = fakeAppsScript();

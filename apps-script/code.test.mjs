@@ -186,12 +186,43 @@ describe('snapshot and list', () => {
 });
 
 describe('the readable sheet', () => {
+  const refresh = () => call({ action: 'refresh' });
+  it('saving never touches the sheet; refresh rebuilds each stale tab once', () => {
+    write('students.json', { students: [{ id: 'a', name: 'Asha' }] });
+    write('teachers.json', { teachers: [{ id: 't', name: 'Mr Rao' }] });
+    write('visits/2026-10.json', { visits: [] });
+    write('visits/2026-09.json', { visits: [] });
+    write('attendance/2026-10.json', { days: {} });
+    expect(tabValues(apps, 'Students')).toBeUndefined();
+    const writesBefore = apps.state.sheetWrites ?? 0;
+    expect(refresh()).toEqual({ ok: true, refreshed: expect.any(Number) });
+    expect(tabValues(apps, 'Students')[1][0]).toBe('Asha');
+    expect(tabValues(apps, 'Visits')).toBeDefined();
+    // Students stale means the attendance tabs are rebuilt as part of it, and two Visits files give one Visits rebuild.
+    expect((apps.state.sheetWrites ?? 0) - writesBefore).toBeLessThanOrEqual(4);
+    expect(refresh()).toEqual({ ok: true, refreshed: 0 });
+  });
+
+  it('refresh needs the key', () => {
+    expect(server.handle({ action: 'refresh', key: 'wrong' })).toEqual({ ok: false, error: 'auth' });
+  });
+
+  it('a sheet problem keeps the tab stale so a later refresh retries it', () => {
+    write('students.json', { students: [{ id: 'a', name: 'Asha' }] });
+    apps.state.failSheets = true;
+    expect(refresh()).toEqual({ ok: true, refreshed: 0 });
+    apps.state.failSheets = false;
+    expect(refresh().refreshed).toBeGreaterThan(0);
+    expect(tabValues(apps, 'Students')[1][0]).toBe('Asha');
+  });
+
   it('Students and Teachers tabs list each person', () => {
     write('students.json', { students: [
       { id: 'b', name: 'Bala', grade: '9', school: 'DAV', guardianName: 'M', guardianPhone: '98', monthlyFee: 1000, joinedOn: '2026-01-01', active: true },
       { id: 'a', name: 'Asha', grade: '8', school: 'St Mary', guardianName: 'R', guardianPhone: '97', monthlyFee: 1500, joinedOn: '2026-01-02', active: false },
     ] });
     write('teachers.json', { teachers: [{ id: 't', name: 'Mr Rao', subject: 'Maths', phone: '', usualAmount: 800, active: true }] });
+    refresh();
     const s = tabValues(apps, 'Students');
     expect(s[0]).toEqual(['Name', 'Class', 'School', 'Guardian', 'Guardian phone', 'Monthly fee (Rs)', 'Joined', 'Active']);
     expect(s.slice(1).map((r) => [r[0], r[7]])).toEqual([['Asha', 'No'], ['Bala', 'Yes']]);
@@ -200,6 +231,7 @@ describe('the readable sheet', () => {
 
   it('text that would run as a formula is made harmless', () => {
     write('students.json', { students: [{ id: 'x', name: '=HYPERLINK("http://evil","click")', grade: '+1', school: '-2', guardianName: '@sum', guardianPhone: '\t=1', monthlyFee: 100, joinedOn: '2026-01-01', active: true }] });
+    refresh();
     const row = tabValues(apps, 'Students')[1];
     expect(row.slice(0, 5)).toEqual(['\'=HYPERLINK("http://evil","click")', "'+1", "'-2", "'@sum", "'\t=1"]);
     expect(row[5]).toBe(100); // numbers stay numbers
@@ -213,6 +245,7 @@ describe('the readable sheet', () => {
       { id: 'p2', studentId: 's', forMonth: '2026-10', amount: 600, paidOn: '2026-10-05', mode: 'upi', receipt: { number: 2, studentName: 'Asha', balanceAfter: 0, voided: true, voidReason: 'typo' } },
       { id: 'p1', studentId: 's', forMonth: '2026-10', amount: 400, paidOn: '2026-10-03', mode: 'cash', receipt: { number: 1, studentName: 'Asha', balanceAfter: 600, voided: false } },
     ] });
+    refresh();
     const rows = tabValues(apps, 'Payments');
     expect(rows[1]).toEqual([1, '2026-10-03', 'Asha', '2026-10', 400, 'cash', 600, 'Paid']);
     expect(rows[2][7]).toBe('VOID - typo');
@@ -225,6 +258,7 @@ describe('the readable sheet', () => {
       { id: 'b', teacherId: 't', date: '2026-10-03', hours: 1.5, amount: 600, note: '', paid: false, paidOn: '', deleted: false },
       { id: 'c', teacherId: 't', date: '2026-10-04', hours: 9, amount: 9999, note: '', deleted: true },
     ] });
+    refresh();
     const rows = tabValues(apps, 'Visits');
     expect(rows.length).toBe(3);
     expect(rows[1]).toEqual(['2026-10-02', 'Mr Rao', 'Maths', 2, 800, 'Paid', '2026-10-02', 'old shape']);
@@ -234,6 +268,7 @@ describe('the readable sheet', () => {
   it('Attendance tab is a register of students by date with totals, named from the Students file', () => {
     write('students.json', { students: [{ id: 'a', name: 'Asha' }, { id: 'b', name: 'Bala' }] });
     write('attendance/2026-10.json', { days: { '2026-10-02': { a: 'P', b: 'L' }, '2026-10-01': { a: 'A', b: 'P' } } });
+    refresh();
     const rows = tabValues(apps, 'Attendance 2026-10');
     expect(rows[0]).toEqual(['Student', '2026-10-01', '2026-10-02', 'Present', 'Absent', 'Leave']);
     expect(rows[1]).toEqual(['Asha', 'A', 'P', 1, 1, 0]);
@@ -244,13 +279,15 @@ describe('the readable sheet', () => {
     write('students.json', { students: [{ id: 'a', name: 'Asha' }] });
     write('attendance/2026-10.json', { days: { '2026-10-01': { a: 'P' } } });
     write('students.json', { students: [{ id: 'a', name: 'Asha Rao' }] }, '1');
+    refresh();
     expect(tabValues(apps, 'Attendance 2026-10')[1][0]).toBe('Asha Rao');
   });
 
-  it('a problem with the sheet never fails a save', () => {
+  it('a problem with the sheet never fails a save or a refresh', () => {
     apps.state.failSheets = true;
     expect(write('students.json', { students: [{ id: 'a', name: 'Asha' }] })).toEqual({ ok: true, sha: '1' });
     expect(call({ action: 'read', path: 'students.json' }).found).toBe(true);
+    expect(refresh().ok).toBe(true);
     expect(apps.state.logs.some((l) => l.includes('view refresh failed'))).toBe(true);
     expect(apps.state.logs.join(' ')).not.toContain('Asha');
   });

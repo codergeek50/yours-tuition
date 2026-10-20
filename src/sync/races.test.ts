@@ -81,6 +81,34 @@ describe('sync never overwrites an edit made while it was running', () => {
   }
 });
 
+describe('session retries a failed sync by itself', () => {
+  it('a one-off service error is retried without any new edit', async () => {
+    const remote = new MemoryStorage();
+    const realWrite = remote.write.bind(remote);
+    let failures = 1;
+    remote.write = async (p, c, s) => { if (failures-- > 0) throw new Error('The data service did not answer as expected.'); return realWrite(p, c, s); };
+    const session = createSession(remote, new MemoryLocalStore(), 5, 20);
+    await session.store.saveStudent({ name: 'A', school: '', grade: '8', guardianName: '', guardianPhone: '', monthlyFee: 100, joinedOn: '2026-01-01', active: true });
+    const deadline = Date.now() + 3000;
+    while (((await session.engine.pendingCount()) > 0 || session.getState().status !== 'synced') && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+    session.dispose();
+    expect(session.getState().status).toBe('synced');
+    expect(await session.engine.pendingCount()).toBe(0);
+  });
+  it('a wrong key is not retried over and over', async () => {
+    const remote = new MemoryStorage();
+    let calls = 0;
+    const { AuthError } = await import('../storage/types');
+    remote.write = async () => { calls++; throw new AuthError('no'); };
+    const session = createSession(remote, new MemoryLocalStore(), 5, 20);
+    await session.store.saveStudent({ name: 'A', school: '', grade: '8', guardianName: '', guardianPhone: '', monthlyFee: 100, joinedOn: '2026-01-01', active: true });
+    await new Promise((r) => setTimeout(r, 300));
+    session.dispose();
+    expect(session.getState().status).toBe('auth');
+    expect(calls).toBe(1);
+  });
+});
+
 describe('session keeps syncing changes made during a sync', () => {
   it('uploads a change that arrived while the previous sync was still running', async () => {
     const remote = new MemoryStorage();

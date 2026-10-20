@@ -94,6 +94,11 @@ export class AppsScriptStorage implements Storage {
     return (r.paths as string[]) ?? [];
   }
 
+  /** Asks the service to rebuild the readable spreadsheet tabs for files saved since the last rebuild. Not needed for the data itself. */
+  async refreshViews(): Promise<void> {
+    await this.call({ action: 'refresh' });
+  }
+
   /** Every file and its version in one request, so opening the app on a slow connection is one round trip. */
   async readAll(): Promise<Record<string, StoredFile>> {
     const r = await this.call({ action: 'snapshot' });

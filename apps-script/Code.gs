@@ -209,17 +209,63 @@ function monthOfPath(path) {
   return path.replace(/^.*\//, '').replace(/\.json$/, '');
 }
 
-/** Rebuilds the tabs that depend on one file. Never throws: a view problem must not fail a save. */
+function staleList() {
+  try { return JSON.parse(props().getProperty('STALE') || '[]'); } catch (e) { return []; }
+}
+
+/** Saving only notes which file changed; rebuilding the Sheet is slow, so refresh() does it later, once per tab. */
+function markStale(path) {
+  var list = staleList();
+  if (list.indexOf(path) < 0) list.push(path);
+  props().setProperty('STALE', JSON.stringify(list));
+}
+
+/** Students rebuilds every attendance tab, Teachers rebuilds Visits, and Payments or Visits read all months at once. */
+function dedupeStale(paths) {
+  var has = function (p) { return paths.indexOf(p) >= 0; };
+  var seen = {};
+  return paths.filter(function (p) {
+    if (has('students.json') && p.indexOf('attendance/') === 0) return false;
+    if (has('teachers.json') && p.indexOf('visits/') === 0) return false;
+    var group = p.indexOf('payments/') === 0 ? 'payments' : p.indexOf('visits/') === 0 ? 'visits' : p;
+    if (seen[group]) return false;
+    seen[group] = true;
+    return true;
+  });
+}
+
+/** Rebuilds the Sheet tabs for every file saved since the last refresh. A tab that fails stays stale for next time. */
+function refresh() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  var paths;
+  try {
+    paths = dedupeStale(staleList());
+    props().setProperty('STALE', '[]');
+  } finally {
+    lock.releaseLock();
+  }
+  var failed = paths.filter(function (p) { return !refreshViews(p); });
+  if (failed.length) {
+    lock.waitLock(20000);
+    try { failed.forEach(markStale); } finally { lock.releaseLock(); }
+  }
+  return { ok: true, refreshed: paths.length - failed.length };
+}
+
+/** Rebuilds the tabs that depend on one file. Never throws: a view problem must not fail a save. Returns false on trouble. */
 function refreshViews(path) {
   try {
     var ss = spreadsheet();
-    if (!ss) return;
+    if (!ss) return true;
     if (path === 'students.json') {
-      writeTab(ss, 'Students', studentsTable(readJson('students.json')));
-      docsInDir('attendance').forEach(function (d) { writeTab(ss, 'Attendance ' + monthOfPath(d.path), attendanceTable(d.doc, readJson('students.json'))); });
+      var students = readJson('students.json');
+      writeTab(ss, 'Students', studentsTable(students));
+      docsInDir('attendance').forEach(function (d) { writeTab(ss, 'Attendance ' + monthOfPath(d.path), attendanceTable(d.doc, students)); });
     } else if (path === 'teachers.json') {
-      writeTab(ss, 'Teachers', teachersTable(readJson('teachers.json')));
-      writeTab(ss, 'Visits', visitsTable(docsInDir('visits').map(function (d) { return d.doc; }), readJson('teachers.json')));
+      var teachers = readJson('teachers.json');
+      writeTab(ss, 'Teachers', teachersTable(teachers));
+      writeTab(ss, 'Visits', visitsTable(docsInDir('visits').map(function (d) { return d.doc; }), teachers));
     } else if (path.indexOf('attendance/') === 0) {
       writeTab(ss, 'Attendance ' + monthOfPath(path), attendanceTable(readJson(path), readJson('students.json')));
     } else if (path.indexOf('payments/') === 0) {
@@ -227,8 +273,10 @@ function refreshViews(path) {
     } else if (path.indexOf('visits/') === 0) {
       writeTab(ss, 'Visits', visitsTable(docsInDir('visits').map(function (d) { return d.doc; }), readJson('teachers.json')));
     }
+    return true;
   } catch (e) {
     Logger.log('view refresh failed for ' + path);
+    return false;
   }
 }
 
@@ -267,6 +315,8 @@ function handle(req) {
       }
       case 'write':
         return write(req);
+      case 'refresh':
+        return refresh();
       default:
         return fail('bad_request');
     }
@@ -299,10 +349,10 @@ function write(req) {
       newVersion = '1';
     }
     props().setProperty('v:' + req.path, newVersion);
+    if (req.path !== 'meta.json') markStale(req.path); // the Sheet is rebuilt later by refresh(), so a save stays quick
   } finally {
     lock.releaseLock();
   }
-  refreshViews(req.path); // after the lock is released, so saves stay quick
   return { ok: true, sha: newVersion };
 }
 

@@ -62,6 +62,7 @@ describe('the data service over real HTTP', () => {
     const a = phoneFor(target);
     await a.store.saveStudent({ name: '=SUM(1,1) Sheet Student', school: 'DAV', grade: '9', guardianName: '', guardianPhone: '', monthlyFee: 1200, joinedOn: '2026-01-01', active: true });
     expect((await a.engine.push()).status).toBe('synced');
+    await a.storage.refreshViews(); // saving only marks the tabs stale; this rebuilds them
     const apps = (target as unknown as { apps?: any }).apps;
     const tab = [...apps.state.spreadsheets.values()].map((ss: any) => ss.tabs.get('Students')?.values).find(Boolean);
     const names = tab.slice(1).map((r: string[]) => r[0]);

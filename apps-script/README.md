@@ -5,7 +5,7 @@ YOURS Tuition keeps its data in **your own Google Drive**, through a small free 
 What you end up with:
 
 - A Drive folder **YOURS Tuition data** holding the data files.
-- A Google Sheet **YOURS Tuition data (read-only view)** with tabs *Students*, *Teachers*, *Payments*, *Visits* and one *Attendance* tab per month. Open it in Sheets, or File, Download, Microsoft Excel. It is a read-only copy: changes made in the Sheet are overwritten and never go back to the app.
+- A Google Sheet **YOURS Tuition data (read-only view)** with tabs *Students*, *Teachers*, *Payments*, *Visits* and one *Attendance* tab per month. Open it in Sheets, or File, Download, Microsoft Excel. It is a read-only copy: changes made in the Sheet are overwritten and never go back to the app. It catches up a few seconds after the app finishes syncing, so saving in the app never waits for it.
 - A secret key and web address that let the app (and only the app) read and save the data.
 
 You need: your Google account. No Google Cloud project, no credit card.

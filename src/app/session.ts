@@ -19,14 +19,17 @@ export interface Session {
 
 /** Wires the local working copy, the sync engine and background syncing together. */
 export function createSession(
-  remote: Storage & { sheetUrl?: string },
+  remote: Storage & { sheetUrl?: string; refreshViews?(): Promise<void> },
   local: LocalStore = new IdbLocalStore(),
   debounceMs = 1500,
+  retryMs = 15000,
 ): Session {
   const engine = new SyncEngine(local, remote);
   let state: SyncState = { status: 'synced', pending: 0 };
   const listeners = new Set<(s: SyncState) => void>();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let failures = 0;
   let running = false;
 
   const emit = (next: SyncState) => {
@@ -44,6 +47,14 @@ export function createSession(
       emit({ status: res.status, pending });
       // A change made while this run was in flight is still waiting: schedule another pass.
       if (res.status === 'synced' && pending > 0) schedule();
+      // The readable spreadsheet is rebuilt in the background so saving never waits for it.
+      if (res.pushed > 0 && remote.refreshViews) void remote.refreshViews().catch(() => undefined);
+      // A one-off hiccup (slow start, no signal) heals itself: retry with a growing pause. A wrong key does not.
+      clearTimeout(retryTimer);
+      if (res.status === 'error' || res.status === 'offline') {
+        retryTimer = setTimeout(() => void syncNow(), Math.min(retryMs * 2 ** failures, 120000));
+        failures++;
+      } else failures = 0;
     } finally {
       running = false;
     }
@@ -71,6 +82,7 @@ export function createSession(
     sheetUrl: () => remote.sheetUrl ?? '',
     dispose() {
       clearTimeout(timer);
+      clearTimeout(retryTimer);
       if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);
     },
   };

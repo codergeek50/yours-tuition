@@ -42,7 +42,7 @@ export function createFakeApps({ deployedUrl = 'https://script.google.com/macros
   });
 
   const sheetApi = (ss, tab) => ({
-    clear: () => { tab.values = []; },
+    clear: () => { state.sheetWrites = (state.sheetWrites ?? 0) + 1; tab.values = []; },
     getRange: () => ({ setValues: (v) => { tab.values = v; } }),
     setFrozenRows: () => {},
   });
