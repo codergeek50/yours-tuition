@@ -99,12 +99,15 @@ export class SyncEngine {
     throw new ConflictError();
   }
 
-  /** Pull then push, reporting the combined outcome. */
+  /**
+   * Push, then pull only when nothing was uploaded. A save already carries its own new version, and another
+   * writer's change is caught by that version check, so re-reading everything right after saving only slows it down.
+   */
   async sync(): Promise<SyncResult> {
     try {
       const pushed = await this.push();
       if (pushed.status !== 'synced') return pushed;
-      await this.pull();
+      if (pushed.pushed === 0) await this.pull();
       return pushed;
     } catch (e) {
       if (e instanceof NetworkError) return { status: 'offline', pushed: 0 };

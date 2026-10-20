@@ -81,6 +81,35 @@ describe('sync never overwrites an edit made while it was running', () => {
   }
 });
 
+describe('sync does not pull straight after a push', () => {
+  const student = { name: 'A', school: '', grade: '8', guardianName: '', guardianPhone: '', monthlyFee: 100, joinedOn: '2026-01-01', active: true };
+  it('a sync that uploaded something makes no extra read request; a sync with nothing to upload still pulls', async () => {
+    const remote = new MemoryStorage();
+    let reads = 0;
+    const realReadAll = remote.readAll.bind(remote);
+    remote.readAll = async () => { reads++; return realReadAll(); };
+    const local = new MemoryLocalStore();
+    const engine = new SyncEngine(local, remote);
+    const { DataStore } = await import('../data/store');
+    await new DataStore(local).saveStudent(student);
+    expect((await engine.sync()).pushed).toBe(1);
+    expect(reads).toBe(0);
+    expect((await engine.sync()).pushed).toBe(0);
+    expect(reads).toBe(1);
+  });
+  it('another phone\'s change still arrives on the next sync that has nothing to upload', async () => {
+    const remote = new MemoryStorage();
+    const a = new SyncEngine(new MemoryLocalStore(), remote);
+    const localB = new MemoryLocalStore();
+    const b = new SyncEngine(localB, remote);
+    const { DataStore } = await import('../data/store');
+    await new DataStore((a as unknown as { local: LocalStore }).local).saveStudent(student);
+    await a.sync();
+    await b.sync();
+    expect(JSON.parse((await localB.get('students.json'))!.content).students).toHaveLength(1);
+  });
+});
+
 describe('session retries a failed sync by itself', () => {
   it('a one-off service error is retried without any new edit', async () => {
     const remote = new MemoryStorage();
