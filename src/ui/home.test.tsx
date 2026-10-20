@@ -33,3 +33,21 @@ describe('Home: visiting teachers', () => {
     await screen.findByText(/Record a visit/);
   });
 });
+
+describe('Home: money still owed to visiting teachers', () => {
+  it('shows paid this month and what is still to pay, across all months', async () => {
+    const store = new DataStore(new MemoryLocalStore());
+    const t = await store.saveTeacher({ name: 'Mr Rao', phone: '', subject: '', usualAmount: 0, active: true });
+    await store.recordVisit({ teacherId: t.id, date: todayISO(), hours: 2, amount: 800, note: '' });
+    await store.recordVisit({ teacherId: t.id, date: '2026-01-10', hours: 1, amount: 500, note: '', paid: false });
+    render(<HomeScreen store={store} settings={settings} goto={vi.fn()} />);
+    await screen.findByText(/₹800 paid this month · ₹500 to pay/);
+  });
+  it('shows only what is owed when nothing was paid this month', async () => {
+    const store = new DataStore(new MemoryLocalStore());
+    const t = await store.saveTeacher({ name: 'Mr Rao', phone: '', subject: '', usualAmount: 0, active: true });
+    await store.recordVisit({ teacherId: t.id, date: todayISO(), hours: 1, amount: 600, note: '', paid: false });
+    render(<HomeScreen store={store} settings={settings} goto={vi.fn()} />);
+    await screen.findByText('₹600 to pay');
+  });
+});

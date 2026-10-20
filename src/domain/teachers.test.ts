@@ -7,7 +7,7 @@ const teacher = (o: Partial<Teacher> = {}): Teacher => ({
   id: 't1', name: 'Mr Rao', phone: '9876543210', subject: 'Maths', usualAmount: 800, active: true, updatedAt: '2026-10-01T00:00:00Z', ...o,
 });
 const visit = (o: Partial<Visit> = {}): Visit => ({
-  id: 'v1', teacherId: 't1', date: '2026-10-03', hours: 2, amount: 800, note: '', deleted: false, updatedAt: '2026-10-03T00:00:00Z', ...o,
+  id: 'v1', teacherId: 't1', date: '2026-10-03', hours: 2, amount: 800, note: '', paid: true, paidOn: '2026-10-03', deleted: false, updatedAt: '2026-10-03T00:00:00Z', ...o,
 });
 
 describe('validateTeacher', () => {
@@ -71,12 +71,12 @@ describe('visitSummary', () => {
       ['Mr Rao', 2, 3.5, 1400],
       ['Ms Iyer', 1, 3, 1500],
     ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
-    expect(s.totals).toEqual({ visits: 3, hours: 6.5, paid: 2900 });
+    expect(s.totals).toEqual({ visits: 3, hours: 6.5, paid: 2900, pending: 0 });
   });
   it('lists only teachers who visited, including retired ones, and handles no visits', () => {
     const s = visitSummary(teachers, [visit({ teacherId: 't3', id: 'z', hours: 1, amount: 100 })]);
     expect(s.rows.map((r) => r.teacher.name)).toEqual(['Zed']);
-    expect(visitSummary(teachers, []).totals).toEqual({ visits: 0, hours: 0, paid: 0 });
+    expect(visitSummary(teachers, []).totals).toEqual({ visits: 0, hours: 0, paid: 0, pending: 0 });
   });
   it('keeps hours exact with quarter steps', () => {
     const s = visitSummary(teachers, [visit({ id: 'a', hours: 0.25 }), visit({ id: 'b', hours: 0.75 }), visit({ id: 'c', hours: 0.5 })]);

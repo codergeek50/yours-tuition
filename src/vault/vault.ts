@@ -1,8 +1,8 @@
-/** PIN-encrypted storage for the GitHub token. The token is never stored or logged in plain text. */
+/** Device- or PIN-encrypted storage for the data service secret key. The key is never stored or logged in plain text. */
 
 export interface VaultRecord {
-  owner: string;
-  repo: string;
+  /** The data service (Apps Script web app) address this key belongs to. */
+  endpoint: string;
   /** 'device': locked by a non-extractable key kept on this phone (no PIN). 'pin': locked by the PIN. */
   mode?: 'pin' | 'device';
   salt?: string; // base64, PIN mode only
@@ -34,13 +34,13 @@ export function isValidPin(pin: string): boolean {
   return /^\d{4,8}$/.test(pin);
 }
 
-export async function sealToken(token: string, pin: string, repo: { owner: string; repo: string }): Promise<VaultRecord> {
+export async function sealToken(secret: string, pin: string, target: { endpoint: string }): Promise<VaultRecord> {
   if (!isValidPin(pin)) throw new Error('PIN must be 4 to 8 digits');
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(pin, salt, ITERATIONS);
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token)));
-  return { owner: repo.owner, repo: repo.repo, mode: 'pin', iter: ITERATIONS, salt: toB64(salt), iv: toB64(iv), ct: toB64(ct) };
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secret)));
+  return { endpoint: target.endpoint, mode: 'pin', iter: ITERATIONS, salt: toB64(salt), iv: toB64(iv), ct: toB64(ct) };
 }
 
 export async function openToken(rec: VaultRecord, pin: string): Promise<string> {
@@ -62,7 +62,8 @@ export function loadVault(): VaultRecord | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const rec = JSON.parse(raw) as VaultRecord;
-    return rec && typeof rec.ct === 'string' && typeof rec.iv === 'string' ? rec : null;
+    // A record from an earlier version has no endpoint: ignore it so the phone is simply set up again.
+    return rec && typeof rec.ct === 'string' && typeof rec.iv === 'string' && typeof rec.endpoint === 'string' ? rec : null;
   } catch {
     return null;
   }
@@ -70,11 +71,6 @@ export function loadVault(): VaultRecord | null {
 
 export function clearVault(): void {
   localStorage.removeItem(KEY);
-}
-
-export function daysUntilExpiry(expiry: Date | null, now: Date = new Date()): number | null {
-  if (!expiry) return null;
-  return Math.floor((expiry.getTime() - now.getTime()) / 86_400_000);
 }
 
 export const needsPin = (rec: VaultRecord) => rec.mode !== 'device';
@@ -101,12 +97,12 @@ async function keyOp<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDB
   });
 }
 
-export async function sealTokenDevice(token: string, repo: { owner: string; repo: string }): Promise<VaultRecord> {
+export async function sealTokenDevice(secret: string, target: { endpoint: string }): Promise<VaultRecord> {
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   await keyOp('readwrite', (s) => s.put(key, 'device'));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token)));
-  return { owner: repo.owner, repo: repo.repo, mode: 'device', iv: toB64(iv), ct: toB64(ct) };
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secret)));
+  return { endpoint: target.endpoint, mode: 'device', iv: toB64(iv), ct: toB64(ct) };
 }
 
 export async function openTokenDevice(rec: VaultRecord): Promise<string> {
@@ -123,18 +119,18 @@ export async function clearDeviceKey(): Promise<void> {
 // ---- setup link: lets the person who owns the data set up the teacher's phone without typing a token.
 // The details travel in the URL fragment, which browsers never send to any server.
 
-export function encodeSetupLink(appUrl: string, repo: string, token: string): string {
-  const payload = btoa(JSON.stringify({ r: repo, t: token })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+export function encodeSetupLink(appUrl: string, endpoint: string, key: string): string {
+  const payload = btoa(JSON.stringify({ r: endpoint, t: key })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   return `${appUrl.split('#')[0]}#setup=${payload}`;
 }
 
-export function decodeSetupLink(hash: string): { repo: string; token: string } | null {
+export function decodeSetupLink(hash: string): { endpoint: string; key: string } | null {
   const m = /^#setup=([A-Za-z0-9_-]+)$/.exec(hash);
   if (!m) return null;
   try {
     const b64 = m[1]!.replace(/-/g, '+').replace(/_/g, '/');
     const parsed = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as { r?: unknown; t?: unknown };
-    return typeof parsed.r === 'string' && typeof parsed.t === 'string' && parsed.r && parsed.t ? { repo: parsed.r, token: parsed.t } : null;
+    return typeof parsed.r === 'string' && typeof parsed.t === 'string' && parsed.r && parsed.t ? { endpoint: parsed.r, key: parsed.t } : null;
   } catch {
     return null;
   }

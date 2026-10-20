@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { GitHubStorage } from './storage/github';
-import { AuthError, NetworkError, NotPrivateError } from './storage/types';
+import { AppsScriptStorage, isValidEndpoint } from './storage/appsscript';
+import { AuthError, NetworkError } from './storage/types';
 import { IdbLocalStore, type LocalStore } from './sync/local';
 import {
-  clearDeviceKey, clearVault, daysUntilExpiry, decodeSetupLink, encodeSetupLink, isValidPin, loadVault, needsPin,
+  clearDeviceKey, clearVault, decodeSetupLink, encodeSetupLink, isValidPin, loadVault, needsPin,
   openToken, openTokenDevice, saveVault, sealToken, sealTokenDevice, type VaultRecord,
 } from './vault/vault';
 import { createSession, type Session, type SyncState } from './app/session';
@@ -30,15 +30,9 @@ const TABS: [Tab, string, () => preact.JSX.Element][] = [
 ];
 const TITLES: Record<Tab, string> = { home: 'YOURS Tuition', attendance: 'Attendance', students: 'Students', fees: 'Fees', reports: 'Reports', teachers: 'Visiting teachers', more: 'More' };
 
-function parseRepo(input: string): { owner: string; repo: string } | null {
-  const m = /^(?:https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(input.trim());
-  return m ? { owner: m[1]!, repo: m[2]! } : null;
-}
-
 function problemText(e: unknown): string {
-  if (e instanceof NotPrivateError) return 'This repository is public, but student data must be private. Make the repository private in GitHub, then try again.';
-  if (e instanceof AuthError) return 'GitHub did not accept the token, or it cannot reach that repository. The token may have expired.';
-  if (e instanceof NetworkError) return 'Cannot reach GitHub. Check your internet connection.';
+  if (e instanceof AuthError) return 'The data service did not accept the secret key. If the key was replaced, set this phone up again with the new setup link.';
+  if (e instanceof NetworkError) return 'Cannot reach the data service. Check your internet connection.';
   return (e as Error).message || 'Something went wrong.';
 }
 
@@ -50,43 +44,44 @@ export function App({ deps = {} }: { deps?: AppDeps }) {
   const setup = useRef(decodeSetupLink(location.hash));
   const [booting, setBooting] = useState(Boolean(setup.current) || Boolean(vault && !needsPin(vault)));
   const [problem, setProblem] = useState<string | null>(null);
-  const token = useRef('');
+  const secret = useRef('');
 
   const makeLocal = () => (deps.local ? deps.local() : new IdbLocalStore());
 
-  function start(storage: GitHubStorage) {
+  function start(storage: AppsScriptStorage) {
     const s = createSession(storage, makeLocal(), deps.debounceMs);
     setSession(s);
     void s.syncNow();
   }
 
-  async function open(rec: VaultRecord, tok: string): Promise<string | null> {
-    const storage = new GitHubStorage({ owner: rec.owner, repo: rec.repo, token: tok, fetchImpl: deps.fetchImpl });
+  async function open(rec: VaultRecord, key: string): Promise<string | null> {
+    const storage = new AppsScriptStorage({ endpoint: rec.endpoint, key, fetchImpl: deps.fetchImpl });
     try {
-      await storage.verifyPrivate();
+      await storage.verify();
     } catch (e) {
       // Offline is fine: the saved copy still works. Anything else blocks.
       if (!(e instanceof NetworkError)) return problemText(e);
     }
-    token.current = tok;
+    secret.current = key;
     start(storage);
     return null;
   }
 
-  async function connect(repoInput: string, tok: string): Promise<string | null> {
-    const parsed = parseRepo(repoInput);
-    if (!parsed) return 'Enter the repository as owner/name, for example priya/tuition-data.';
-    if (!tok.trim()) return 'Paste the access token.';
-    const storage = new GitHubStorage({ ...parsed, token: tok.trim(), fetchImpl: deps.fetchImpl });
+  async function connect(endpointInput: string, keyInput: string): Promise<string | null> {
+    const endpoint = endpointInput.trim();
+    const key = keyInput.trim();
+    if (!isValidEndpoint(endpoint)) return 'Enter the web app address. It looks like https://script.google.com/macros/s/.../exec';
+    if (!key) return 'Enter the secret key.';
+    const storage = new AppsScriptStorage({ endpoint, key, fetchImpl: deps.fetchImpl });
     try {
-      await storage.verifyPrivate();
+      await storage.verify();
     } catch (e) {
       return problemText(e);
     }
-    const rec = await sealTokenDevice(tok.trim(), parsed);
+    const rec = await sealTokenDevice(key, { endpoint });
     saveVault(rec);
     setVault(rec);
-    token.current = tok.trim();
+    secret.current = key;
     start(storage);
     return null;
   }
@@ -101,9 +96,9 @@ export function App({ deps = {} }: { deps?: AppDeps }) {
         setup.current = null;
         if (vault) {
           // Never let a link silently repoint a phone that already holds data.
-          setProblem(`This phone is already set up with ${vault.owner}/${vault.repo}, so the setup link was ignored. Choose Try again to open the app as it is, or Reconnect to start over (this removes the data stored on this phone; it stays safe in GitHub).`);
+          setProblem('This phone is already set up, so the setup link was ignored. Choose Try again to open the app as it is, or Reconnect to start over (this removes the data stored on this phone; it stays safe in your Google Drive).');
         } else {
-          const err = await connect(link.repo, link.token);
+          const err = await connect(link.endpoint, link.key);
           if (err) setProblem(err);
         }
       } else if (vault && !needsPin(vault)) {
@@ -124,19 +119,19 @@ export function App({ deps = {} }: { deps?: AppDeps }) {
 
   async function unlock(pin: string): Promise<string | null> {
     if (!vault) return 'Not connected.';
-    let tok: string;
+    let key: string;
     try {
-      tok = await openToken(vault, pin);
+      key = await openToken(vault, pin);
     } catch {
       return 'Wrong PIN.';
     }
-    return open(vault, tok);
+    return open(vault, key);
   }
 
   async function setPin(pin: string): Promise<string | null> {
     if (!vault) return 'Not connected.';
     if (!isValidPin(pin)) return 'PIN must be 4 to 8 digits.';
-    const rec = await sealToken(token.current, pin, vault);
+    const rec = await sealToken(secret.current, pin, vault);
     saveVault(rec);
     setVault(rec);
     return null;
@@ -144,7 +139,7 @@ export function App({ deps = {} }: { deps?: AppDeps }) {
 
   async function removePin() {
     if (!vault) return;
-    const rec = await sealTokenDevice(token.current, vault);
+    const rec = await sealTokenDevice(secret.current, vault);
     saveVault(rec);
     setVault(rec);
   }
@@ -159,7 +154,7 @@ export function App({ deps = {} }: { deps?: AppDeps }) {
     await (session?.local ?? makeLocal()).clear();
     clearVault();
     await clearDeviceKey();
-    token.current = '';
+    secret.current = '';
     setProblem(null);
     setVault(null);
     setSession(null);
@@ -168,7 +163,7 @@ export function App({ deps = {} }: { deps?: AppDeps }) {
   if (problem) return <ProblemScreen message={problem} onRetry={() => void boot()} onReconnect={disconnect} />;
   if (booting) return <OpeningScreen />;
   if (!vault) return <ConnectScreen onSubmit={connect} />;
-  if (!session) return <LockScreen repoName={`${vault.owner}/${vault.repo}`} onUnlock={unlock} onForget={disconnect} />;
+  if (!session) return <LockScreen onUnlock={unlock} onForget={disconnect} />;
   return (
     <Shell
       session={session}
@@ -178,7 +173,7 @@ export function App({ deps = {} }: { deps?: AppDeps }) {
       onLock={lock}
       onSetPin={setPin}
       onRemovePin={removePin}
-      setupLink={() => encodeSetupLink(location.origin + location.pathname, `${vault.owner}/${vault.repo}`, token.current)}
+      setupLink={() => encodeSetupLink(location.origin + location.pathname, vault.endpoint, secret.current)}
       onDisconnect={disconnect}
     />
   );
@@ -211,11 +206,10 @@ function Shell(props: {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [props.pinOn, props.onLock]);
 
-  const expiry = daysUntilExpiry(session.tokenExpiry());
   const syncText =
     sync.status === 'syncing' ? 'Syncing...'
     : sync.status === 'offline' ? `Offline${sync.pending ? ` · ${sync.pending} waiting` : ''}`
-    : sync.status === 'auth' ? 'Token problem'
+    : sync.status === 'auth' ? 'Key problem'
     : sync.status === 'error' ? 'Sync problem'
     : sync.pending ? `${sync.pending} waiting` : 'Synced';
 
@@ -228,10 +222,7 @@ function Shell(props: {
           {syncText}
         </button>
       </header>
-      {expiry !== null && expiry <= 14 && (
-        <p class="banner" role="alert">{expiry < 0 ? 'Your access token has expired.' : `Your access token expires in ${expiry} day(s).`} Create a new one in GitHub and reconnect (More).</p>
-      )}
-      {sync.status === 'auth' && <p class="banner" role="alert">GitHub rejected the token. Your changes are saved on this phone and will upload once you reconnect with a valid token.</p>}
+      {sync.status === 'auth' && <p class="banner" role="alert">The data service did not accept the secret key. Your changes are saved on this phone and will upload once the phone is set up again with the current setup link.</p>}
       <main class="content">
         {tab === 'home' && <HomeScreen store={session.store} settings={settings} goto={goto} />}
         {tab === 'attendance' && <AttendanceScreen store={session.store} />}
@@ -252,7 +243,7 @@ function Shell(props: {
         {tab === 'more' && (
           <MoreScreen
             session={session} settings={settings} pinOn={props.pinOn} onSettings={props.onSettings}
-            onSetPin={props.onSetPin} onRemovePin={props.onRemovePin} setupLink={props.setupLink}
+            onSetPin={props.onSetPin} onRemovePin={props.onRemovePin} setupLink={props.setupLink} sheetUrl={session.sheetUrl()}
             onLock={props.onLock} onDisconnect={props.onDisconnect}
           />
         )}

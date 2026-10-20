@@ -12,13 +12,14 @@ export interface Session {
   getState(): SyncState;
   subscribe(fn: (s: SyncState) => void): () => void;
   syncNow(): Promise<void>;
-  tokenExpiry(): Date | null;
+  /** Address of the readable spreadsheet, or '' if unknown. */
+  sheetUrl(): string;
   dispose(): void;
 }
 
 /** Wires the local working copy, the sync engine and background syncing together. */
 export function createSession(
-  remote: Storage & { tokenExpiry?: Date | null },
+  remote: Storage & { sheetUrl?: string },
   local: LocalStore = new IdbLocalStore(),
   debounceMs = 1500,
 ): Session {
@@ -67,7 +68,7 @@ export function createSession(
       return () => listeners.delete(fn);
     },
     syncNow,
-    tokenExpiry: () => remote.tokenExpiry ?? null,
+    sheetUrl: () => remote.sheetUrl ?? '',
     dispose() {
       clearTimeout(timer);
       if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);

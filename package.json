@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "verify": "node scripts/verify.mjs",
-    "contrast": "node scripts/check-contrast.mjs"
+    "contrast": "node scripts/check-contrast.mjs",
+    "backup": "node scripts/backup-data.mjs"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",

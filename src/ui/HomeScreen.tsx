@@ -11,8 +11,8 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
   const today = todayISO();
   const month = monthOf(today);
   const { data } = useLoad(async () => {
-    const [students, attendance, payments, visits] = await Promise.all([store.students(), store.attendance(month), store.payments(month), store.visits(month)]);
-    return { students, day: attendance.days[today], payments, visits };
+    const [students, attendance, payments, visits, owed] = await Promise.all([store.students(), store.attendance(month), store.payments(month), store.visits(month), store.pendingOverview()]);
+    return { students, day: attendance.days[today], payments, visits, owed };
   }, [store]);
 
   const students = data?.students ?? [];
@@ -22,7 +22,11 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
   const absent = active.filter((s) => day?.[s.id] === 'A').length;
   const leave = active.filter((s) => day?.[s.id] === 'L').length;
   const pending = active.reduce((n, s) => n + Math.max(balanceFor(s, month, data?.payments ?? []), 0), 0);
-  const teacherPaid = (data?.visits ?? []).reduce((n, v) => n + v.amount, 0);
+  const teacherPaid = (data?.visits ?? []).filter((v) => v.paid).reduce((n, v) => n + v.amount, 0);
+  const teacherOwed = data?.owed.amount ?? 0;
+  const teacherSub = [teacherPaid > 0 ? `${formatRupees(teacherPaid)} paid this month` : '', teacherOwed > 0 ? `${formatRupees(teacherOwed)} to pay` : '']
+    .filter(Boolean)
+    .join(' · ') || 'Record a visit';
   const name = settings.teacherName.trim();
   const dateText = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -96,7 +100,7 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
         </button>
         <button type="button" class="tile tile-wide tile-neutral" onClick={() => goto('teachers')}>
           <IconTeacher size={64} />
-          <span class="tile-sub">{teacherPaid > 0 ? `${formatRupees(teacherPaid)} paid this month` : 'Record a visit'}</span>
+          <span class="tile-sub">{teacherSub}</span>
           <b>Visiting teachers</b>
         </button>
       </div>

@@ -1,6 +1,5 @@
 import { useState } from 'preact/hooks';
 import { todayISO } from '../domain/dates';
-import { daysUntilExpiry } from '../vault/vault';
 import type { Session } from '../app/session';
 import { saveSettings, type Settings } from '../app/settings';
 import { Field, PageHeader, val } from './common';
@@ -15,6 +14,8 @@ export interface MoreProps {
   onSetPin: (pin: string) => Promise<string | null>;
   onRemovePin: () => Promise<void>;
   setupLink: () => string;
+  /** Address of the readable spreadsheet, or '' if the data service did not say. */
+  sheetUrl: string;
   onDisconnect: () => void;
   onLock: () => void;
 }
@@ -26,7 +27,6 @@ export function MoreScreen(props: MoreProps) {
   const [pin, setPin] = useState('');
   const [link, setLink] = useState('');
   const [msg, setMsg] = useState('');
-  const days = daysUntilExpiry(session.tokenExpiry());
 
   function saveNames(e: Event) {
     e.preventDefault();
@@ -92,16 +92,21 @@ export function MoreScreen(props: MoreProps) {
         <h3>Sync</h3>
         <p class="muted small">Changes upload on their own. Use this if the status at the top looks stuck.</p>
         <button class="btn wide" type="button" onClick={() => session.syncNow()}><IconRefresh size={20} /> Sync now</button>
-        {days !== null && (
-          <p class={days <= 14 ? 'errors' : 'muted small'}>
-            Access token {days < 0 ? 'has expired' : `expires in ${days} day(s)`}. Create a new one in GitHub and reconnect before it expires.
-          </p>
+      </section>
+
+      <section class="card">
+        <h3>Your spreadsheet</h3>
+        <p class="muted small">All your data is also kept in a Google Sheet in your Drive. Open it in Sheets or download it as Excel. It is a read-only copy: changes made there are not saved back.</p>
+        {props.sheetUrl ? (
+          <a class="btn wide" href={props.sheetUrl} target="_blank" rel="noopener noreferrer">Open the spreadsheet</a>
+        ) : (
+          <p class="muted small">The link appears once the phone has connected.</p>
         )}
       </section>
 
       <section class="card">
         <h3>Backup</h3>
-        <p class="muted small">Your data is also kept, with full history, in your private GitHub repository. This downloads a copy you can keep.</p>
+        <p class="muted small">Your data is kept in your Google Drive. This also downloads a copy you can keep.</p>
         <button class="btn wide" type="button" onClick={exportAll}><IconDownload size={20} /> Export all data</button>
         <Field label="Restore from backup file"><input type="file" accept="application/json,.json" onChange={importFile} /></Field>
       </section>
@@ -137,7 +142,7 @@ export function MoreScreen(props: MoreProps) {
 
       <section class="card">
         <h3>This phone</h3>
-        <p class="muted small">Removes the saved token and the offline copy from this phone. Your data stays safe in GitHub.</p>
+        <p class="muted small">Removes the saved token and the offline copy from this phone. Your data stays safe in your Google Drive.</p>
         <button class="btn danger wide" type="button" onClick={() => { if (window.confirm('Remove the saved token and the offline copy from this phone? Unsynced changes will be lost.')) props.onDisconnect(); }}>Disconnect this phone</button>
       </section>
     </div>

@@ -14,10 +14,10 @@ import { IconDownload, IconPlus } from './icons';
 const QUICK_HOURS = ['1', '1.5', '2', '3', '4'];
 
 type Mode = 'visits' | 'teachers';
-type VisitDraft = { id?: string; month?: string; teacherId: string; date: string; hours: string; amount: string; note: string; amountTouched: boolean };
+type VisitDraft = { id?: string; month?: string; teacherId: string; date: string; hours: string; amount: string; note: string; amountTouched: boolean; paid: boolean; wasPaid: boolean };
 type TeacherDraft = { id?: string; name: string; phone: string; subject: string; usual: string; active: boolean };
 
-const blankVisit = (teacherId = '', amount = ''): VisitDraft => ({ teacherId, date: todayISO(), hours: '', amount, note: '', amountTouched: false });
+const blankVisit = (teacherId = '', amount = ''): VisitDraft => ({ teacherId, date: todayISO(), hours: '', amount, note: '', amountTouched: false, paid: true, wasPaid: true });
 const blankTeacher = (): TeacherDraft => ({ name: '', phone: '', subject: '', usual: '', active: true });
 
 function parseAmount(text: string): number | null {
@@ -38,11 +38,17 @@ export function TeachersScreen({ store }: { store: DataStore }) {
   const [errors, setErrors] = useState<string[]>([]);
   const { data: teachers, reload: reloadTeachers } = useLoad(() => store.teachers(), [store]);
   const { data: visits, reload: reloadVisits } = useLoad(() => store.visits(month), [store, month]);
+  const { data: pending, reload: reloadPending } = useLoad(() => store.pendingOverview(), [store, month]);
   const saving = useRef(false);
 
   const activeTeachers = (teachers ?? []).filter((t) => t.active).sort((a, b) => a.name.localeCompare(b.name));
   const summary = visitSummary(teachers ?? [], visits ?? []);
   const nameOf = (id: string) => teachers?.find((t) => t.id === id)?.name ?? 'Unknown teacher';
+
+  const reloadAll = () => {
+    reloadVisits();
+    reloadPending();
+  };
 
   const closeForms = () => {
     setVisitDraft(null);
@@ -60,16 +66,17 @@ export function TeachersScreen({ store }: { store: DataStore }) {
     const hours = parseHours(d.hours);
     if (hours === null) return setErrors(['Hours must be above 0 and at most 24, in steps of 0.25 (for example 1.5)']);
     const amount = parseAmount(d.amount);
-    if (amount === null) return setErrors(['Enter the amount paid in rupees (0 if nothing was paid)']);
+    if (amount === null) return setErrors([d.paid ? 'Enter the amount paid in rupees (0 if nothing was paid)' : 'Enter the amount to pay in rupees']);
     saving.current = true;
     try {
       const fields = { teacherId: d.teacherId, date: d.date, hours, amount, note: d.note.trim() };
-      if (d.id && d.month) await store.updateVisit(d.id, d.month, fields);
-      else await store.recordVisit(fields);
+      // Only send the payment status when it was changed, so editing a note never touches the paid date.
+      if (d.id && d.month) await store.updateVisit(d.id, d.month, { ...fields, ...(d.paid !== d.wasPaid ? { paid: d.paid } : {}) });
+      else await store.recordVisit({ ...fields, paid: d.paid });
       const shownMonth = monthOf(d.date);
       closeForms();
       if (shownMonth !== month) setMonth(shownMonth);
-      reloadVisits();
+      reloadAll();
     } catch (err) {
       setErrors([(err as Error).message]);
     } finally {
@@ -84,10 +91,30 @@ export function TeachersScreen({ store }: { store: DataStore }) {
     try {
       await store.deleteVisit(d.id, d.month);
       closeForms();
-      reloadVisits();
+      reloadAll();
     } catch (err) {
       setErrors([(err as Error).message]);
     }
+  }
+
+  async function markPaid() {
+    const d = visitDraft;
+    if (!d?.id || !d.month) return;
+    try {
+      await store.markVisitPaid(d.id, d.month);
+      closeForms();
+      reloadAll();
+    } catch (err) {
+      setErrors([(err as Error).message]);
+    }
+  }
+
+  async function settle(teacherId: string) {
+    const p = pending?.byTeacher[teacherId];
+    if (!p) return;
+    if (!window.confirm(`Mark ${p.count} pending ${p.count === 1 ? 'visit' : 'visits'} (${formatRupees(p.amount)}) as paid to ${nameOf(teacherId)}?`)) return;
+    await store.settleTeacher(teacherId);
+    reloadAll();
   }
 
   const setVisit = (patch: Partial<VisitDraft>) => setVisitDraft((cur) => (cur ? { ...cur, ...patch } : cur));
@@ -134,7 +161,15 @@ export function TeachersScreen({ store }: { store: DataStore }) {
               <button key={h} type="button" class={d.hours === h ? 'chipbtn on' : 'chipbtn'} aria-label={`Set hours to ${h}`} onClick={() => setVisit({ hours: h })}>{h} h</button>
             ))}
           </div>
-          <Field label="Amount paid (₹)">
+          <div class="field">
+            <span class="field-label">Payment</span>
+            <div class="seg" role="group" aria-label="Payment">
+              <button type="button" class={d.paid ? 'on' : ''} aria-pressed={d.paid} onClick={() => setVisit({ paid: true })}>Paid now</button>
+              <button type="button" class={!d.paid ? 'on' : ''} aria-pressed={!d.paid} onClick={() => setVisit({ paid: false })}>Pay later</button>
+            </div>
+          </div>
+          {!d.paid && <p class="note">Not paid yet. It stays pending until you mark it paid.</p>}
+          <Field label={d.paid ? 'Amount paid (₹)' : 'Amount to pay (₹)'}>
             <input value={d.amount} inputMode="numeric" onInput={(e) => setVisit({ amount: val(e), amountTouched: true })} autoComplete="off" />
           </Field>
           <Field label="Note (optional)" hint="For example: Maths revision class">
@@ -144,6 +179,7 @@ export function TeachersScreen({ store }: { store: DataStore }) {
         <Errors errors={errors} />
         <div class="form-actions">
           <button class="btn primary wide" type="submit">Save visit</button>
+          {d.id && !d.wasPaid && <button class="btn wide" type="button" onClick={markPaid}>Mark as paid</button>}
           <button class="btn wide" type="button" onClick={closeForms}>Cancel</button>
           {d.id && <button class="btn danger wide" type="button" onClick={deleteVisit}>Delete visit</button>}
         </div>
@@ -255,7 +291,28 @@ export function TeachersScreen({ store }: { store: DataStore }) {
             <span class="label">Paid to visiting teachers in {monthLabel(month)}</span>
             <p class="pending-total">{formatRupees(summary.totals.paid)} paid</p>
             <span class="sub">{summary.totals.visits} {summary.totals.visits === 1 ? 'visit' : 'visits'} · {formatHours(summary.totals.hours)}</span>
+            {summary.totals.pending > 0 && <span class="sub">{formatRupees(summary.totals.pending)} pending this month</span>}
           </div>
+
+          {pending && pending.count > 0 && (
+            <section class="card" aria-label="Still to pay">
+              <h3>Still to pay</h3>
+              <p class="muted small">Pay-later visits from every month.</p>
+              <ul class="list inner">
+                {Object.entries(pending.byTeacher).map(([id, p]) => (
+                  <li key={id}>
+                    <Avatar name={nameOf(id)} />
+                    <span class="item-main">
+                      <strong class="item-name">{nameOf(id)}</strong>
+                      <span class="item-meta">{p.count} {p.count === 1 ? 'visit' : 'visits'}</span>
+                    </span>
+                    <span class="amount">{formatRupees(p.amount)}</span>
+                    <button class="btn small" type="button" aria-label={`Mark all pending paid for ${nameOf(id)}`} onClick={() => settle(id)}>Mark all paid</button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {summary.rows.length > 0 && (
             <>
@@ -268,7 +325,10 @@ export function TeachersScreen({ store }: { store: DataStore }) {
                       <strong class="item-name">{r.teacher.name}</strong>
                       <span class="item-meta">{r.visits} {r.visits === 1 ? 'visit' : 'visits'} · {formatHours(r.hours)}</span>
                     </span>
-                    <span class="amount">{formatRupees(r.paid)}</span>
+                    <span class="vpay">
+                      <span class="amount">{formatRupees(r.paid)}</span>
+                      {r.pending > 0 && <span class="chip chip-warn">{formatRupees(r.pending)} pending</span>}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -291,7 +351,7 @@ export function TeachersScreen({ store }: { store: DataStore }) {
                     <li key={v.id}>
                       <button
                         type="button" class="row-button" aria-label={`Edit visit by ${nameOf(v.teacherId)} on ${v.date}`}
-                        onClick={() => setVisitDraft({ id: v.id, month, teacherId: v.teacherId, date: v.date, hours: String(v.hours), amount: String(v.amount), note: v.note, amountTouched: true })}
+                        onClick={() => setVisitDraft({ id: v.id, month, teacherId: v.teacherId, date: v.date, hours: String(v.hours), amount: String(v.amount), note: v.note, amountTouched: true, paid: v.paid, wasPaid: v.paid })}
                       >
                         <span class="vdate"><b>{p.day}</b><span>{p.weekday}</span></span>
                         <span class="item-main">
@@ -301,6 +361,7 @@ export function TeachersScreen({ store }: { store: DataStore }) {
                         <span class="vpay">
                           <span class="amount">{formatRupees(v.amount)}</span>
                           <span class="item-meta">{formatHours(v.hours)}</span>
+                          {!v.paid && <span class="chip chip-warn">Pending</span>}
                         </span>
                       </button>
                     </li>

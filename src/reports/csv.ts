@@ -1,5 +1,5 @@
 import type { ISODate, Mark, MonthKey, Payment, Student, Teacher, Visit } from '../domain/types';
-import { visitSummary } from '../domain/teachers';
+import { normalizeVisit, visitSummary } from '../domain/teachers';
 import { balanceFor } from '../domain/fees';
 
 /** Quote cells for CSV and neutralise spreadsheet formulas (= + - @) typed into names or schools. */
@@ -63,24 +63,34 @@ export function feeReportCsv(students: Student[], month: MonthKey, payments: Pay
   return toCsv([header, ...rows]);
 }
 
-/** Every visit in the list, oldest first, with a total row. Deleted visits are left out. */
+/** Every visit in the list, oldest first, with its status and paid date, then paid, pending and total rows. Deleted visits are left out. */
 export function visitsCsv(teachers: Teacher[], visits: Visit[]): string {
-  const live = visits.filter((v) => !v.deleted).sort((a, b) => a.date.localeCompare(b.date) || a.updatedAt.localeCompare(b.updatedAt));
+  const live = visits
+    .filter((v) => !v.deleted)
+    .map(normalizeVisit)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.updatedAt.localeCompare(b.updatedAt));
   const rows = live.map((v) => {
     const t = teachers.find((x) => x.id === v.teacherId);
-    return [v.date, t?.name ?? 'Unknown teacher', t?.subject ?? '', v.hours, v.amount, v.note];
+    return [v.date, t?.name ?? 'Unknown teacher', t?.subject ?? '', v.hours, v.amount, v.paid ? 'Paid' : 'Pending', v.paidOn, v.note];
   });
   const hours = live.reduce((n, v) => n + v.hours, 0);
-  const paid = live.reduce((n, v) => n + v.amount, 0);
-  return toCsv([['Date', 'Teacher', 'Subject', 'Hours', 'Amount paid', 'Note'], ...rows, ['Total', '', '', hours, paid, '']]);
+  const paid = live.filter((v) => v.paid).reduce((n, v) => n + v.amount, 0);
+  const pending = live.filter((v) => !v.paid).reduce((n, v) => n + v.amount, 0);
+  return toCsv([
+    ['Date', 'Teacher', 'Subject', 'Hours', 'Amount', 'Status', 'Paid on', 'Note'],
+    ...rows,
+    ['Total', '', '', hours, paid + pending, '', '', ''],
+    ['Paid', '', '', '', paid, '', '', ''],
+    ['Pending', '', '', '', pending, '', '', ''],
+  ]);
 }
 
-/** One row per teacher who visited, with visits, hours and total paid, plus a grand total. */
+/** One row per teacher who visited, with visits, hours, paid, pending and total, plus a grand total. */
 export function visitSummaryCsv(teachers: Teacher[], visits: Visit[]): string {
   const { rows, totals } = visitSummary(teachers, visits);
   return toCsv([
-    ['Teacher', 'Subject', 'Visits', 'Hours', 'Total paid'],
-    ...rows.map((r) => [r.teacher.name, r.teacher.subject, r.visits, r.hours, r.paid]),
-    ['Total', '', totals.visits, totals.hours, totals.paid],
+    ['Teacher', 'Subject', 'Visits', 'Hours', 'Paid', 'Pending', 'Total'],
+    ...rows.map((r) => [r.teacher.name, r.teacher.subject, r.visits, r.hours, r.paid, r.pending, r.paid + r.pending]),
+    ['Total', '', totals.visits, totals.hours, totals.paid, totals.pending, totals.paid + totals.pending],
   ]);
 }

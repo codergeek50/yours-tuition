@@ -12,7 +12,7 @@ const csp = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
-  "connect-src 'self' https://api.github.com",
+  "connect-src 'self' https://script.google.com https://script.googleusercontent.com",
   "frame-src 'self' about:",
   "object-src 'none'",
   "base-uri 'self'",
@@ -25,7 +25,8 @@ export default defineConfig({
     preact(),
     {
       name: 'csp-meta',
-      apply: 'build',
+      // YT_NO_CSP=1 is for local browser checks against a plain-HTTP fake data service only; releases never set it.
+      apply: () => process.env.YT_NO_CSP !== '1' && process.env.NODE_ENV === 'production',
       transformIndexHtml: () => [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp }, injectTo: 'head-prepend' }],
     },
     VitePWA({
@@ -53,6 +54,6 @@ export default defineConfig({
   ],
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'apps-script/**/*.test.mjs'],
   },
 });

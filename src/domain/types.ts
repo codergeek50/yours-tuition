@@ -63,7 +63,11 @@ export interface Visit {
   teacherId: string;
   date: ISODate;
   hours: number; // quarter-hour steps, above 0 and at most 24
-  amount: number; // whole rupees paid
+  amount: number; // whole rupees: what was paid, or what is still owed while pending
+  /** false = "pay later": recorded but not paid yet. Visits saved before this existed have no value and count as paid. */
+  paid: boolean;
+  /** Day the visit was paid; empty while pending. */
+  paidOn: ISODate | '';
   note: string;
   deleted: boolean;
   updatedAt: string;

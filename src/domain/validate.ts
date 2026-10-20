@@ -39,5 +39,6 @@ export function validateVisit(v: Visit): FieldError[] {
   if (!isValidISODate(v.date)) errs.push({ field: 'date', message: 'Date is not valid' });
   if (!isValidHours(v.hours)) errs.push({ field: 'hours', message: 'Hours must be above 0 and at most 24, in steps of 0.25' });
   if (!Number.isInteger(v.amount) || v.amount < 0) errs.push({ field: 'amount', message: 'Amount must be a whole number of rupees' });
+  if (v.paid && !isValidISODate(v.paidOn)) errs.push({ field: 'paidOn', message: 'Paid date is not valid' });
   return errs;
 }

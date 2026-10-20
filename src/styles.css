@@ -445,3 +445,6 @@ thead .m-sum { font-size: var(--t-xs); color: var(--muted); }
 
 .tile-wide { grid-column: span 2; min-height: 104px; }
 .tile-neutral { background: var(--surface-2); color: var(--ink); border-color: var(--line); }
+
+.card > .list { box-shadow: none; }
+.vpay .chip { min-height: 24px; padding: 0 8px; font-size: var(--t-xs); }

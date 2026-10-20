@@ -1,5 +1,6 @@
 import type { AttendanceFile, ISODate, Mark, Meta, MonthKey, PayMode, Payment, PaymentsFile, Student, StudentsFile, Teacher, TeachersFile, Visit, VisitsFile } from '../domain/types';
-import { isValidISODate, monthOf, monthsInRange } from '../domain/dates';
+import { isValidISODate, monthOf, monthsInRange, todayISO } from '../domain/dates';
+import { normalizeVisit } from '../domain/teachers';
 import { nextId } from '../domain/fees';
 import { validatePayment, validateStudent, validateTeacher, validateVisit } from '../domain/validate';
 import type { LocalStore } from '../sync/local';
@@ -12,7 +13,8 @@ const TEACHERS = 'teachers.json';
 const visitsPath = (m: MonthKey) => `visits/${m}.json`;
 
 export interface PaymentInput { studentId: string; forMonth: MonthKey; amount: number; paidOn: ISODate; mode: PayMode }
-export interface VisitInput { teacherId: string; date: ISODate; hours: number; amount: number; note: string }
+export interface VisitInput { teacherId: string; date: ISODate; hours: number; amount: number; note: string; paid?: boolean; paidOn?: ISODate }
+export interface PendingOverview { count: number; amount: number; byTeacher: Record<string, { count: number; amount: number }> }
 export interface BackupFile { app: 'yours-tuition'; version: 1; exportedAt: string; files: Record<string, string> }
 
 /**
@@ -191,6 +193,7 @@ export class DataStore {
   async visits(month: MonthKey): Promise<Visit[]> {
     const file = await this.load<VisitsFile>(visitsPath(month), { visits: [] });
     return file.visits
+      .map(normalizeVisit)
       .filter((v) => !v.deleted)
       .sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt));
   }
@@ -202,7 +205,9 @@ export class DataStore {
   }
 
   async recordVisit(input: VisitInput): Promise<Visit> {
-    const visit: Visit = { ...input, id: nextId(), deleted: false, updatedAt: new Date().toISOString() };
+    const paid = input.paid ?? true;
+    const { paid: _p, paidOn: _po, ...rest } = input;
+    const visit: Visit = { ...rest, id: nextId(), paid, paidOn: paid ? input.paidOn || input.date : '', deleted: false, updatedAt: new Date().toISOString() };
     const errs = validateVisit(visit);
     if (errs.length) throw new Error(errs.map((e) => e.message).join('. '));
     if (!(await this.teachers()).some((t) => t.id === visit.teacherId)) throw new Error('Teacher not found');
@@ -211,10 +216,13 @@ export class DataStore {
   }
 
   /** Edit a visit. Changing the date to another month moves it between month files (added first, then removed, so a crash never loses it). */
-  async updateVisit(id: string, month: MonthKey, patch: Partial<Pick<Visit, 'teacherId' | 'date' | 'hours' | 'amount' | 'note'>>): Promise<Visit> {
+  async updateVisit(id: string, month: MonthKey, patch: Partial<Pick<Visit, 'teacherId' | 'date' | 'hours' | 'amount' | 'note' | 'paid' | 'paidOn'>>): Promise<Visit> {
     const current = (await this.visits(month)).find((v) => v.id === id);
     if (!current) throw new Error('Visit not found');
     const next: Visit = { ...current, ...patch, updatedAt: new Date().toISOString() };
+    // Paying fills in today's date unless one is given; putting a visit back to pay later clears it.
+    if (patch.paid === true && !current.paid && !patch.paidOn) next.paidOn = todayISO();
+    if (patch.paid === false) next.paidOn = '';
     const errs = validateVisit(next);
     if (errs.length) throw new Error(errs.map((e) => e.message).join('. '));
     if (!(await this.teachers()).some((t) => t.id === next.teacherId)) throw new Error('Teacher not found');
@@ -228,6 +236,44 @@ export class DataStore {
       }));
     }
     return next;
+  }
+
+  async markVisitPaid(id: string, month: MonthKey, paidOn: ISODate = todayISO()): Promise<Visit> {
+    return this.updateVisit(id, month, { paid: true, paidOn });
+  }
+
+  /** Marks every pending visit of one teacher as paid, in every month. Returns how many and how much. */
+  async settleTeacher(teacherId: string, paidOn: ISODate = todayISO()): Promise<{ count: number; amount: number }> {
+    let count = 0;
+    let amount = 0;
+    for (const month of await this.monthsOf('visits/')) {
+      await this.mutate<VisitsFile>(visitsPath(month), { visits: [] }, (f) => ({
+        visits: f.visits.map((raw) => {
+          const v = normalizeVisit(raw);
+          if (v.deleted || v.paid || v.teacherId !== teacherId) return raw;
+          count += 1;
+          amount += v.amount;
+          return { ...v, paid: true, paidOn, updatedAt: new Date().toISOString() };
+        }),
+      }));
+    }
+    return { count, amount };
+  }
+
+  /** Everything still owed to visiting teachers, over all months. */
+  async pendingOverview(): Promise<PendingOverview> {
+    const out: PendingOverview = { count: 0, amount: 0, byTeacher: {} };
+    for (const month of await this.monthsOf('visits/')) {
+      for (const v of await this.visits(month)) {
+        if (v.paid) continue;
+        out.count += 1;
+        out.amount += v.amount;
+        const row = (out.byTeacher[v.teacherId] ??= { count: 0, amount: 0 });
+        row.count += 1;
+        row.amount += v.amount;
+      }
+    }
+    return out;
   }
 
   async deleteVisit(id: string, month: MonthKey): Promise<void> {

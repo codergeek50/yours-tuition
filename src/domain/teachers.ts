@@ -16,25 +16,36 @@ export function formatHours(n: number): string {
   return `${Number.isInteger(n) ? n : String(n)} h`;
 }
 
-export interface TeacherSummaryRow { teacher: Teacher; visits: number; hours: number; paid: number }
-export interface VisitSummary { rows: TeacherSummaryRow[]; totals: { visits: number; hours: number; paid: number } }
+/** A visit as stored, possibly from before pay-later existed (no status): such a visit was paid, on the day it happened. */
+export function normalizeVisit(raw: Omit<Visit, 'paid' | 'paidOn'> & { paid?: boolean; paidOn?: string }): Visit {
+  const paid = raw.paid !== false;
+  return { ...raw, paid, paidOn: paid ? raw.paidOn || raw.date : '' };
+}
 
-/** Visits, hours and money per teacher for the visits given (deleted visits never count). Only teachers who visited appear. */
+export interface TeacherSummaryRow { teacher: Teacher; visits: number; hours: number; paid: number; pending: number }
+export interface VisitSummary { rows: TeacherSummaryRow[]; totals: { visits: number; hours: number; paid: number; pending: number } }
+
+/** Visits, hours, money paid and money still owed per teacher (deleted visits never count). Only teachers who visited appear. */
 export function visitSummary(teachers: Teacher[], visits: Visit[]): VisitSummary {
   const byTeacher = new Map<string, TeacherSummaryRow>();
-  for (const v of visits) {
-    if (v.deleted) continue;
+  for (const raw of visits) {
+    if (raw.deleted) continue;
+    const v = normalizeVisit(raw);
     const teacher = teachers.find((t) => t.id === v.teacherId);
     if (!teacher) continue;
-    const row = byTeacher.get(teacher.id) ?? { teacher, visits: 0, hours: 0, paid: 0 };
+    const row = byTeacher.get(teacher.id) ?? { teacher, visits: 0, hours: 0, paid: 0, pending: 0 };
     row.visits += 1;
     row.hours += v.hours;
-    row.paid += v.amount;
+    if (v.paid) row.paid += v.amount;
+    else row.pending += v.amount;
     byTeacher.set(teacher.id, row);
   }
   const rows = [...byTeacher.values()].sort((a, b) => a.teacher.name.localeCompare(b.teacher.name));
   return {
     rows,
-    totals: rows.reduce((t, r) => ({ visits: t.visits + r.visits, hours: t.hours + r.hours, paid: t.paid + r.paid }), { visits: 0, hours: 0, paid: 0 }),
+    totals: rows.reduce(
+      (t, r) => ({ visits: t.visits + r.visits, hours: t.hours + r.hours, paid: t.paid + r.paid, pending: t.pending + r.pending }),
+      { visits: 0, hours: 0, paid: 0, pending: 0 },
+    ),
   };
 }

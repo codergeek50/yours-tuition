@@ -4,26 +4,23 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { App } from './App';
 import { loadVault, saveVault, sealToken, encodeSetupLink, clearDeviceKey } from './vault/vault';
 import { MemoryLocalStore } from './sync/local';
+import { fakeAppsScript } from './test-support/fakeAppsScript';
+
+let fake: ReturnType<typeof fakeAppsScript>;
 
 beforeEach(async () => {
+  fake = fakeAppsScript();
   localStorage.clear();
   history.replaceState(null, '', '/');
   await clearDeviceKey();
 });
 afterEach(cleanup);
 
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-const repoFetch = (isPrivate: boolean) =>
-  vi.fn(async (url: string) => {
-    if (url.endsWith('/repos/me/data')) return json({ private: isPrivate });
-    return json({ message: 'Not Found' }, 404); // empty data repo
-  }) as unknown as typeof fetch;
+const deps = (fetchImpl: typeof fetch = fake.fetchImpl) => ({ fetchImpl, local: () => new MemoryLocalStore(), debounceMs: 10 });
 
-const deps = (fetchImpl: typeof fetch) => ({ fetchImpl, local: () => new MemoryLocalStore(), debounceMs: 10 });
-
-async function fillConnect(repo = 'me/data', token = 'github_pat_x') {
-  fireEvent.input(await screen.findByLabelText('Data repository (owner/name)'), { target: { value: repo } });
-  fireEvent.input(screen.getByLabelText('Access token'), { target: { value: token } });
+async function fillConnect(endpoint = fake.endpoint, key = fake.key) {
+  fireEvent.input(await screen.findByLabelText('Web app address'), { target: { value: endpoint } });
+  fireEvent.input(screen.getByLabelText('Secret key'), { target: { value: key } });
   fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 }
 
@@ -31,61 +28,70 @@ const inApp = () => screen.findByRole('button', { name: 'Attendance' });
 
 describe('first run', () => {
   it('shows the product name and a simple connect screen with no PIN', async () => {
-    render(<App deps={deps(repoFetch(true))} />);
+    render(<App deps={deps()} />);
     expect(await screen.findByRole('heading', { name: 'YOURS Tuition' })).toBeTruthy();
-    expect(screen.getByText(/Connect your data repository/)).toBeTruthy();
+    expect(screen.getByText(/Connect your data/)).toBeTruthy();
     expect(screen.queryByLabelText(/PIN/)).toBeNull();
   });
 
-  it('refuses a public data repository and stores nothing', async () => {
-    render(<App deps={deps(repoFetch(false))} />);
-    await fillConnect();
-    await screen.findByText(/must be private/i);
+  it('refuses an address that is not a Google Apps Script web app, and stores nothing', async () => {
+    render(<App deps={deps()} />);
+    await fillConnect('https://evil.example.com/macros/s/abc/exec');
+    await screen.findByText(/Enter the web app address/);
     expect(loadVault()).toBeNull();
   });
 
-  it('connects and goes straight into the app, with the token encrypted', async () => {
-    render(<App deps={deps(repoFetch(true))} />);
+  it('refuses a wrong secret key and stores nothing', async () => {
+    render(<App deps={deps()} />);
+    await fillConnect(fake.endpoint, 'not-the-key');
+    await screen.findByText(/did not accept the secret key/i);
+    expect(loadVault()).toBeNull();
+  });
+
+  it('connects and goes straight into the app, with the key encrypted', async () => {
+    render(<App deps={deps()} />);
     await fillConnect();
     await inApp();
     const rec = loadVault()!;
-    expect(rec.owner).toBe('me');
+    expect(rec.endpoint).toBe(fake.endpoint);
     expect(rec.mode).toBe('device');
-    expect(JSON.stringify(rec)).not.toContain('github_pat_x');
+    expect(JSON.stringify(rec)).not.toContain(fake.key);
+    expect(localStorage.length).toBeGreaterThan(0);
+    expect([...Array(localStorage.length)].map((_, i) => localStorage.getItem(localStorage.key(i)!)).join('')).not.toContain(fake.key);
   });
 });
 
 describe('the teacher never sees setup', () => {
   it('reopens straight into the app when already connected', async () => {
-    const first = render(<App deps={deps(repoFetch(true))} />);
+    const first = render(<App deps={deps()} />);
     await fillConnect();
     await inApp();
     first.unmount();
-    render(<App deps={deps(repoFetch(true))} />);
+    render(<App deps={deps()} />);
     await inApp();
-    expect(screen.queryByText(/Connect your data repository/)).toBeNull();
+    expect(screen.queryByText(/Connect your data/)).toBeNull();
   });
 
-  it('sets itself up from a setup link and removes the token from the address bar', async () => {
-    history.replaceState(null, '', encodeSetupLink(location.origin + '/', 'me/data', 'github_pat_link'));
-    render(<App deps={deps(repoFetch(true))} />);
+  it('sets itself up from a setup link and removes the key from the address bar', async () => {
+    history.replaceState(null, '', encodeSetupLink(location.origin + '/', fake.endpoint, fake.key));
+    render(<App deps={deps()} />);
     await inApp();
-    expect(loadVault()!.repo).toBe('data');
+    expect(loadVault()!.endpoint).toBe(fake.endpoint);
     expect(location.hash).toBe('');
   });
 
   it('does not flash the connect screen while opening', async () => {
-    const first = render(<App deps={deps(repoFetch(true))} />);
+    const first = render(<App deps={deps()} />);
     await fillConnect();
     await inApp();
     first.unmount();
-    render(<App deps={deps(repoFetch(true))} />);
-    expect(screen.queryByText(/Connect your data repository/)).toBeNull();
+    render(<App deps={deps()} />);
+    expect(screen.queryByText(/Connect your data/)).toBeNull();
     await inApp();
   });
 
-  it('opens offline using the saved copy when GitHub cannot be reached', async () => {
-    const first = render(<App deps={deps(repoFetch(true))} />);
+  it('opens offline using the saved copy when the data service cannot be reached', async () => {
+    const first = render(<App deps={deps()} />);
     await fillConnect();
     await inApp();
     first.unmount();
@@ -95,28 +101,29 @@ describe('the teacher never sees setup', () => {
     await waitFor(() => expect(screen.getByText(/Offline/)).toBeTruthy());
   });
 
-  it('refuses to open if the data repo has become public, with a way to retry', async () => {
-    const first = render(<App deps={deps(repoFetch(true))} />);
+  it('if the key was replaced, says so clearly and offers Try again', async () => {
+    const first = render(<App deps={deps()} />);
     await fillConnect();
     await inApp();
     first.unmount();
-    render(<App deps={deps(repoFetch(false))} />);
-    await screen.findByText(/must be private/i);
+    fake.server.rotateKey();
+    render(<App deps={deps()} />);
+    await screen.findByText(/did not accept the secret key/i);
     expect(screen.queryByRole('button', { name: 'Attendance' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });
 
 describe('setup links cannot take over a phone that is already set up', () => {
-  it('ignores a link for another repository and keeps the existing connection', async () => {
-    const first = render(<App deps={deps(repoFetch(true))} />);
+  it('ignores a link for another data service and keeps the existing connection', async () => {
+    const first = render(<App deps={deps()} />);
     await fillConnect();
     await inApp();
     first.unmount();
-    history.replaceState(null, '', encodeSetupLink(location.origin + '/', 'attacker/their-repo', 'github_pat_evil'));
-    render(<App deps={deps(repoFetch(true))} />);
+    history.replaceState(null, '', encodeSetupLink(location.origin + '/', 'https://script.google.com/macros/s/attacker/exec', 'stolen-key'));
+    render(<App deps={deps()} />);
     await screen.findByText(/already set up/i);
-    expect(loadVault()!.owner).toBe('me');
+    expect(loadVault()!.endpoint).toBe(fake.endpoint);
     expect(location.hash).toBe('');
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await inApp();
@@ -125,7 +132,7 @@ describe('setup links cannot take over a phone that is already set up', () => {
 
 describe('optional PIN', () => {
   async function connected() {
-    render(<App deps={deps(repoFetch(true))} />);
+    render(<App deps={deps()} />);
     await fillConnect();
     await inApp();
   }
@@ -139,7 +146,7 @@ describe('optional PIN', () => {
     expect(loadVault()!.mode).toBe('pin');
     cleanup();
 
-    render(<App deps={deps(repoFetch(true))} />);
+    render(<App deps={deps()} />);
     fireEvent.input(await screen.findByLabelText('PIN'), { target: { value: '9999' } });
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
     await screen.findByText(/Wrong PIN/);
@@ -149,8 +156,8 @@ describe('optional PIN', () => {
   });
 
   it('can be turned off again', async () => {
-    saveVault(await sealToken('tok', '1234', { owner: 'me', repo: 'data' }));
-    render(<App deps={deps(repoFetch(true))} />);
+    saveVault(await sealToken(fake.key, '1234', { endpoint: fake.endpoint }));
+    render(<App deps={deps()} />);
     fireEvent.input(await screen.findByLabelText('PIN'), { target: { value: '1234' } });
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
     await inApp();
@@ -162,36 +169,62 @@ describe('optional PIN', () => {
 });
 
 describe('More', () => {
-  it('creates a setup link for another phone', async () => {
-    render(<App deps={deps(repoFetch(true))} />);
-    await fillConnect('me/data', 'github_pat_share');
+  it('creates a setup link for another phone, without the key in plain text', async () => {
+    render(<App deps={deps()} />);
+    await fillConnect();
     await inApp();
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Show setup link for another phone' }));
     const box = (await screen.findByLabelText('Setup link')) as HTMLInputElement;
     expect(box.value).toContain('#setup=');
-    expect(box.value).not.toContain('github_pat_share');
+    expect(box.value).not.toContain(fake.key);
   });
 
-  it('disconnect clears the saved token and returns to the connect screen', async () => {
-    render(<App deps={deps(repoFetch(true))} />);
+  it('links to the readable spreadsheet in Google Drive', async () => {
+    render(<App deps={deps()} />);
+    await fillConnect();
+    await inApp();
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    const link = (await screen.findByRole('link', { name: 'Open the spreadsheet' })) as HTMLAnchorElement;
+    expect(link.href).toContain('docs.google.com/spreadsheets');
+    expect(link.rel).toContain('noopener');
+  });
+
+  it('disconnect clears the saved key and returns to the connect screen', async () => {
+    render(<App deps={deps()} />);
     await fillConnect();
     fireEvent.click(await screen.findByRole('button', { name: 'More' }));
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(await screen.findByRole('button', { name: 'Disconnect this phone' }));
-    await screen.findByText(/Connect your data repository/);
+    await screen.findByText(/Connect your data/);
     expect(loadVault()).toBeNull();
   });
 });
 
 describe('visiting teachers navigation', () => {
   it('opens from Home and the back button returns Home', async () => {
-    render(<App deps={deps(repoFetch(true))} />);
+    render(<App deps={deps()} />);
     await fillConnect();
     await inApp();
     fireEvent.click(await screen.findByRole('button', { name: 'Teachers' }));
     await screen.findByRole('heading', { name: 'Visiting teachers' });
     fireEvent.click(document.querySelector('.backrow button') as HTMLButtonElement);
     await screen.findByText(/Today at a glance/);
+  });
+});
+
+describe('data really reaches the data service', () => {
+  it('a student added in the app is saved to Drive and appears in the readable sheet', async () => {
+    render(<App deps={deps()} />);
+    await fillConnect();
+    await inApp();
+    fireEvent.click(screen.getByRole('button', { name: 'Students' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add student' }));
+    fireEvent.input(await screen.findByLabelText('Name'), { target: { value: 'Asha Rao' } });
+    fireEvent.input(screen.getByLabelText('Class'), { target: { value: '8' } });
+    fireEvent.input(screen.getByLabelText('Monthly fee (₹)'), { target: { value: '1500' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save student' }));
+    await waitFor(() => expect(fake.requests.some((r) => r.body.action === 'write' && r.body.path === 'students.json')).toBe(true), { timeout: 3000 });
+    await waitFor(() => expect(JSON.stringify([...fake.apps.state.spreadsheets.values()].map((s: any) => [...s.tabs.get('Students')?.values ?? []]))).toContain('Asha Rao'), { timeout: 3000 });
   });
 });

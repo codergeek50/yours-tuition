@@ -28,6 +28,7 @@ export class SyncEngine {
 
   /** Refresh every clean local file from the data repo. Dirty files are left alone. */
   async pull(): Promise<void> {
+    if (this.remote.readAll) return this.pullAll(await this.remote.readAll());
     const listed = await Promise.all(DIRS.map((d) => this.remote.list(d)));
     const paths = [...ROOT_FILES, ...listed.flat()];
     await Promise.all(
@@ -42,7 +43,17 @@ export class SyncEngine {
     );
   }
 
-  /** Write every dirty file to the data repo, merging on conflict. */
+  /** Same result as the file-by-file pull, from one snapshot. Only the app's own files are taken. */
+  private async pullAll(files: Record<string, { content: string; sha: string }>): Promise<void> {
+    const wanted = (p: string) => ROOT_FILES.includes(p) || DIRS.some((d) => p.startsWith(`${d}/`));
+    for (const [path, file] of Object.entries(files)) {
+      if (!wanted(path)) continue;
+      // Decided atomically: an edit made while we were waiting on the network must win.
+      await this.local.update(path, (cur) => (cur?.dirty ? undefined : { content: file.content, sha: file.sha, dirty: false }));
+    }
+  }
+
+  /** Write every dirty file to the data store, merging on conflict. */
   async push(): Promise<SyncResult> {
     const all = await this.local.all();
     const dirty = Object.keys(all).filter((p) => all[p]!.dirty).sort(pushOrder);

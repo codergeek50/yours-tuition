@@ -14,6 +14,9 @@ export class MemoryStorage implements Storage {
     this.files.set(path, { content, sha: next });
     return { sha: next };
   }
+  async readAll() {
+    return Object.fromEntries(this.files);
+  }
   async list(dir: string) {
     return [...this.files.keys()].filter((p) => p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes('/'));
   }

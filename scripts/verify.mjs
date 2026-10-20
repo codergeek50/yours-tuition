@@ -1,5 +1,5 @@
 // One command to prove the app is healthy: typecheck, unit tests, colour contrast, production build, dependency audit.
-// Optional: --e2e runs the real-GitHub end-to-end tests (needs TEST_DATA_REPO and TEST_GITHUB_TOKEN in the environment).
+// Optional: --e2e also runs the end-to-end tests over HTTP (local data service by default; E2E_ENDPOINT and E2E_KEY target a deployed one).
 // Usage: npm run verify [-- --e2e] [-- --skip-audit]
 import { run, step, done } from './lib.mjs';
 
@@ -12,11 +12,8 @@ const steps = [
 ];
 if (!args.has('--skip-audit')) steps.push(['Dependency audit', 'npm', ['audit', '--audit-level=high']]);
 if (args.has('--e2e')) {
-  if (!process.env.TEST_DATA_REPO || !process.env.TEST_GITHUB_TOKEN) {
-    console.error('--e2e needs TEST_DATA_REPO and TEST_GITHUB_TOKEN set in the environment (see .env.example).');
-    process.exit(2);
-  }
-  steps.push(['End-to-end against a real private repo', 'npm', ['run', 'test:e2e', '--silent']]);
+  // Runs over real HTTP against a local server that runs the real Code.gs. Set E2E_ENDPOINT and E2E_KEY to use a deployed web app instead.
+  steps.push([process.env.E2E_ENDPOINT ? 'End-to-end against the deployed web app' : 'End-to-end over HTTP (local data service)', 'npm', ['run', 'test:e2e', '--silent']]);
 }
 
 const results = [];

@@ -1,33 +1,33 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { sealToken, openToken, saveVault, loadVault, clearVault, daysUntilExpiry, sealTokenDevice, openTokenDevice, clearDeviceKey, encodeSetupLink, decodeSetupLink, type VaultRecord } from './vault';
+import { sealToken, openToken, saveVault, loadVault, clearVault, sealTokenDevice, openTokenDevice, clearDeviceKey, encodeSetupLink, decodeSetupLink, type VaultRecord } from './vault';
 
 beforeEach(() => localStorage.clear());
 
 describe('vault', () => {
   it('round-trips a token with the right PIN', async () => {
-    const rec = await sealToken('github_pat_secret', '1234', { owner: 'me', repo: 'data' });
+    const rec = await sealToken('github_pat_secret', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     expect(await openToken(rec, '1234')).toBe('github_pat_secret');
   });
   it('rejects a wrong PIN', async () => {
-    const rec = await sealToken('github_pat_secret', '1234', { owner: 'me', repo: 'data' });
+    const rec = await sealToken('github_pat_secret', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     await expect(openToken(rec, '9999')).rejects.toThrow(/PIN/);
   });
   it('never contains the token in plain text', async () => {
-    const rec = await sealToken('github_pat_secret', '1234', { owner: 'me', repo: 'data' });
+    const rec = await sealToken('github_pat_secret', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     expect(JSON.stringify(rec)).not.toContain('github_pat_secret');
   });
   it('uses a fresh salt each time', async () => {
-    const a = await sealToken('t', '1234', { owner: 'o', repo: 'r' });
-    const b = await sealToken('t', '1234', { owner: 'o', repo: 'r' });
+    const a = await sealToken('t', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
+    const b = await sealToken('t', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     expect(a.salt).not.toBe(b.salt);
   });
   it('rejects PINs shorter than 4 digits', async () => {
-    await expect(sealToken('t', '12', { owner: 'o', repo: 'r' })).rejects.toThrow(/PIN/);
+    await expect(sealToken('t', '12', { endpoint: 'https://script.google.com/macros/s/abc/exec' })).rejects.toThrow(/PIN/);
   });
   it('saves, loads and clears from localStorage', async () => {
     expect(loadVault()).toBeNull();
-    const rec = await sealToken('t', '1234', { owner: 'o', repo: 'r' });
+    const rec = await sealToken('t', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     saveVault(rec);
     expect(loadVault()).toEqual(rec);
     clearVault();
@@ -37,42 +37,41 @@ describe('vault', () => {
     localStorage.setItem('yt.vault', '{not json');
     expect(loadVault()).toBeNull();
   });
-  it('computes days until expiry', () => {
-    const now = new Date('2026-10-01T00:00:00Z');
-    expect(daysUntilExpiry(new Date('2026-10-11T00:00:00Z'), now)).toBe(10);
-    expect(daysUntilExpiry(null, now)).toBeNull();
-    expect(daysUntilExpiry(new Date('2026-09-29T00:00:00Z'), now)).toBeLessThan(0);
+  it('stores the data service address on the record', async () => {
+    const rec: VaultRecord = await sealToken('t', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
+    expect(rec.endpoint).toBe('https://script.google.com/macros/s/abc/exec');
   });
-  it('stores expiry on the record', async () => {
-    const rec: VaultRecord = await sealToken('t', '1234', { owner: 'o', repo: 'r' });
-    expect(rec.owner).toBe('o');
-    expect(rec.repo).toBe('r');
+  it('ignores a record from the GitHub era (no address), so the phone is simply set up again', async () => {
+    const rec = await sealToken('t', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
+    const { endpoint: _drop, ...legacy } = rec;
+    localStorage.setItem('yt.vault', JSON.stringify({ ...legacy, owner: 'me', repo: 'data' }));
+    expect(loadVault()).toBeNull();
   });
 });
 
 describe('device-key mode (no PIN)', () => {
   it('round-trips without a PIN and keeps the token out of storage', async () => {
-    const rec = await sealTokenDevice('github_pat_secret', { owner: 'me', repo: 'data' });
+    const rec = await sealTokenDevice('github_pat_secret', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     expect(rec.mode).toBe('device');
     expect(JSON.stringify(rec)).not.toContain('github_pat_secret');
     expect(await openTokenDevice(rec)).toBe('github_pat_secret');
   });
   it('cannot be opened once the device key is gone', async () => {
-    const rec = await sealTokenDevice('t', { owner: 'o', repo: 'r' });
+    const rec = await sealTokenDevice('t', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     await clearDeviceKey();
     await expect(openTokenDevice(rec)).rejects.toThrow();
   });
   it('PIN records report their mode', async () => {
-    const rec = await sealToken('t', '1234', { owner: 'o', repo: 'r' });
+    const rec = await sealToken('t', '1234', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     expect(rec.mode ?? 'pin').toBe('pin');
   });
 });
 
 describe('setup link', () => {
   it('round-trips repo and token through the URL fragment', () => {
-    const link = encodeSetupLink('https://app.example/yours/', 'me/data', 'github_pat_a+b/c=');
+    const link = encodeSetupLink('https://app.example/yours/', 'https://script.google.com/macros/s/abc/exec', 'key+with/odd=chars');
     expect(link.startsWith('https://app.example/yours/#setup=')).toBe(true);
-    expect(decodeSetupLink(new URL(link).hash)).toEqual({ repo: 'me/data', token: 'github_pat_a+b/c=' });
+    expect(decodeSetupLink(new URL(link).hash)).toEqual({ endpoint: 'https://script.google.com/macros/s/abc/exec', key: 'key+with/odd=chars' });
   });
   it('ignores hashes that are not setup links or are malformed', () => {
     expect(decodeSetupLink('')).toBeNull();
@@ -84,7 +83,7 @@ describe('setup link', () => {
 
 describe('PIN key derivation', () => {
   it('uses a strong, recorded iteration count', async () => {
-    const rec = await sealToken('t', '123456', { owner: 'o', repo: 'r' });
+    const rec = await sealToken('t', '123456', { endpoint: 'https://script.google.com/macros/s/abc/exec' });
     expect(rec.iter).toBeGreaterThanOrEqual(600000);
   });
   it('still opens a token sealed by the earlier version (310k iterations, no iter field)', async () => {
@@ -95,7 +94,7 @@ describe('PIN key derivation', () => {
     const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode('legacy-token')));
     const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
-    const legacy = { owner: 'o', repo: 'r', salt: b64(salt), iv: b64(iv), ct: b64(ct) } as VaultRecord;
+    const legacy = { endpoint: 'https://script.google.com/macros/s/abc/exec', salt: b64(salt), iv: b64(iv), ct: b64(ct) } as VaultRecord;
     expect(await openToken(legacy, '1234')).toBe('legacy-token');
   });
 });

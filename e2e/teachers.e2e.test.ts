@@ -1,29 +1,19 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { GitHubStorage } from '../src/storage/github';
-import { MemoryLocalStore } from '../src/sync/local';
-import { SyncEngine } from '../src/sync/engine';
-import { DataStore } from '../src/data/store';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { startTarget, phoneFor, type Target } from './support';
 import { visitsCsv, visitSummaryCsv } from '../src/reports/csv';
 import { visitSummary } from '../src/domain/teachers';
 
-const repo = process.env.TEST_DATA_REPO ?? '';
-const token = process.env.TEST_GITHUB_TOKEN ?? '';
-const [owner = '', name = ''] = repo.split('/');
 const run = `${Date.now()}`;
-
-if (!repo || !token) throw new Error('Set TEST_DATA_REPO and TEST_GITHUB_TOKEN (see .env.example)');
-
-const remote = () => new GitHubStorage({ owner, repo: name, token });
-const phone = () => {
-  const local = new MemoryLocalStore();
-  const engine = new SyncEngine(local, remote());
-  return { local, engine, store: new DataStore(local) };
-};
+let target: Target;
+const phone = () => phoneFor(target);
 const MONTH = '2027-03';
 
-describe('visiting teachers against a real private GitHub repository', () => {
+describe('end to end through the data service (visiting teachers)', () => {
   beforeAll(async () => {
-    await remote().verifyPrivate();
+    target = await startTarget();
+  });
+  afterAll(async () => {
+    await target.close();
   });
 
   it('visits sync to a second phone, deletions stay deleted, concurrent visits merge, and the reports add up', async () => {
@@ -57,7 +47,7 @@ describe('visiting teachers against a real private GitHub repository', () => {
     // The month's reports add up from what was stored.
     const teachers = await c.store.teachers();
     const summary = visitSummary(teachers, mine);
-    expect(summary.totals).toEqual({ visits: 2, hours: 5, paid: 2300 });
+    expect(summary.totals).toEqual({ visits: 2, hours: 5, paid: 2300, pending: 0 });
     expect(visitsCsv(teachers, mine)).toContain(`Special Class Teacher ${run}`);
     expect(visitSummaryCsv(teachers, mine)).toContain(',2,5,2300');
 

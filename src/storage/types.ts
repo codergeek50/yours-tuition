@@ -1,17 +1,18 @@
 export interface StoredFile { content: string; sha: string }
 
-/** Everything the app needs from a backing store. The UI never talks to GitHub directly. */
+/** Everything the app needs from a backing store. The UI never talks to the data service directly. */
 export interface Storage {
   read(path: string): Promise<StoredFile | null>;
   /** sha is the version being replaced; undefined means "create". Throws ConflictError when stale. */
   write(path: string, content: string, sha: string | undefined): Promise<{ sha: string }>;
   /** Full paths of files directly inside dir. Missing dir gives []. */
   list(dir: string): Promise<string[]>;
+  /** Optional: every file and its version in one request. The sync engine uses it when present. */
+  readAll?(): Promise<Record<string, StoredFile>>;
 }
 
 export class ConflictError extends Error { constructor(m = 'File changed elsewhere') { super(m); this.name = 'ConflictError'; } }
 export class AuthError extends Error { constructor(m = 'Token rejected or expired') { super(m); this.name = 'AuthError'; } }
-export class NotPrivateError extends Error { constructor(m = 'Data repository is not private') { super(m); this.name = 'NotPrivateError'; } }
 export class NetworkError extends Error { constructor(m = 'Network unavailable') { super(m); this.name = 'NetworkError'; } }
 
 /** Read-modify-write a JSON file, re-reading and retrying when another write wins. */

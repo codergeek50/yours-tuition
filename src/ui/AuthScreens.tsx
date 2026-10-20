@@ -13,31 +13,31 @@ function Intro({ children }: { children?: preact.ComponentChildren }) {
 }
 
 /** Fallback only: the teacher normally gets a ready-made setup link and never sees this. */
-export function ConnectScreen({ onSubmit }: { onSubmit: (repo: string, token: string) => Promise<string | null> }) {
-  const [repo, setRepo] = useState('');
-  const [token, setToken] = useState('');
+export function ConnectScreen({ onSubmit }: { onSubmit: (endpoint: string, key: string) => Promise<string | null> }) {
+  const [endpoint, setEndpoint] = useState('');
+  const [key, setKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: Event) {
     e.preventDefault();
     setBusy(true);
-    setError(await onSubmit(repo, token));
+    setError(await onSubmit(endpoint, key));
     setBusy(false);
   }
 
   return (
     <main class="screen narrow">
       <Intro>
-        <h2>Connect your data repository</h2>
+        <h2>Connect your data</h2>
         <p class="muted">
-          Your students, attendance and fees are saved as files in a <strong>private</strong> GitHub repository that only you can open.
-          Create it and a limited access token first (steps are in the project README). You only do this once.
+          Your students, attendance and fees are saved in a spreadsheet in your own <strong>Google Drive</strong>, through a small free script you set up once
+          (steps are in the project README). Enter its address and secret key here, or open the setup link instead.
         </p>
       </Intro>
       <form class="card" onSubmit={submit}>
-        <Field label="Data repository (owner/name)"><input value={repo} onInput={(e) => setRepo(val(e))} autoCapitalize="off" autoComplete="off" spellcheck={false} /></Field>
-        <Field label="Access token" hint="Kept encrypted on this phone and only ever sent to GitHub."><input type="password" value={token} onInput={(e) => setToken(val(e))} autoComplete="off" /></Field>
+        <Field label="Web app address"><input value={endpoint} onInput={(e) => setEndpoint(val(e))} inputMode="url" autoCapitalize="off" autoComplete="off" spellcheck={false} /></Field>
+        <Field label="Secret key" hint="Kept encrypted on this phone and only ever sent to your own data service."><input type="password" value={key} onInput={(e) => setKey(val(e))} autoComplete="off" /></Field>
         <Errors errors={error ? [error] : []} />
         <button class="btn primary wide" type="submit" disabled={busy}>{busy ? 'Checking...' : 'Connect'}</button>
       </form>
@@ -69,7 +69,7 @@ export function ProblemScreen(props: { message: string; onRetry: () => void; onR
 }
 
 /** Only shown when the teacher has chosen to protect the app with a PIN. */
-export function LockScreen(props: { repoName: string; onUnlock: (pin: string) => Promise<string | null>; onForget: () => void }) {
+export function LockScreen(props: { onUnlock: (pin: string) => Promise<string | null>; onForget: () => void }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,7 +85,7 @@ export function LockScreen(props: { repoName: string; onUnlock: (pin: string) =>
   return (
     <main class="screen narrow">
       <Intro>
-        <p class="muted">Connected to {props.repoName}</p>
+        <p class="muted">Enter your PIN to open the app.</p>
       </Intro>
       <form class="card" onSubmit={submit}>
         <Field label="PIN"><input type="password" inputMode="numeric" value={pin} onInput={(e) => setPin(val(e))} autoComplete="off" /></Field>
