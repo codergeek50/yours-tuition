@@ -24,6 +24,25 @@ describe('the expenses screen', () => {
     expect((await store.expenses(month))[0]).toMatchObject({ label: 'Rent', amount: 4000 });
   });
 
+  it('keeps every field when several are filled at the same instant (browser autofill)', async () => {
+    const store = newStore();
+    render(<ExpensesScreen store={store} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add expense' }));
+    // Raw events with no re-render between them, as autofill does.
+    const fill = (label: string, value: string) => {
+      const el = screen.getByLabelText(label) as HTMLInputElement;
+      el.value = value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    fill('What for', 'Rent');
+    fill('Amount (₹)', '4000');
+    fill('Date', '2026-10-05');
+    await new Promise((r) => setTimeout(r, 20));
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }));
+    await screen.findByText('Rent');
+    expect((await store.expenses('2026-10'))[0]).toMatchObject({ label: 'Rent', amount: 4000, date: '2026-10-05' });
+  });
+
   it('refuses an empty label or a bad amount with a message', async () => {
     render(<ExpensesScreen store={newStore()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Add expense' }));

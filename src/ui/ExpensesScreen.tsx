@@ -105,9 +105,9 @@ export function ExpensesScreen({ store }: { store: DataStore }) {
       {draft && (
         <form class="card" onSubmit={save}>
           <h3>{draft.id ? 'Edit expense' : 'Add expense'}</h3>
-          <Field label="What for"><input type="text" value={draft.label} placeholder="Rent" maxLength={80} onInput={(e) => setDraft({ ...draft, label: val(e) })} /></Field>
-          <Field label="Amount (₹)"><input type="text" inputMode="numeric" value={draft.amount} placeholder="4000" onInput={(e) => setDraft({ ...draft, amount: val(e) })} /></Field>
-          <Field label="Date"><input type="date" value={draft.date} onInput={(e) => setDraft({ ...draft, date: val(e) })} /></Field>
+          <Field label="What for"><input type="text" value={draft.label} placeholder="Rent" maxLength={80} onInput={(e) => { const v = val(e); setDraft((cur) => cur && { ...cur, label: v }); }} /></Field>
+          <Field label="Amount (₹)"><input type="text" inputMode="numeric" value={draft.amount} placeholder="4000" onInput={(e) => { const v = val(e); setDraft((cur) => cur && { ...cur, amount: v }); }} /></Field>
+          <Field label="Date"><input type="date" value={draft.date} onInput={(e) => { const v = val(e); setDraft((cur) => cur && { ...cur, date: v }); }} /></Field>
           <Errors errors={errors} />
           <button class="btn primary wide" type="submit">Save expense</button>
           <button class="btn wide" type="button" onClick={close}>Cancel</button>
