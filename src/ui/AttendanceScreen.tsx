@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { Mark, Student } from '../domain/types';
 import { monthOf, todayISO } from '../domain/dates';
 import type { DataStore } from '../data/store';
-import { Avatar, Empty, val } from './common';
+import { Avatar, Empty, Field, val } from './common';
 import { useLoad } from './hooks';
 import { IconCalendar, IconCheck, IconChevronDown, IconLeft, IconRight } from './icons';
 
@@ -44,6 +44,31 @@ export function AttendanceScreen({ store }: { store: DataStore }) {
   const [edits, setEdits] = useState<Record<string, Mark>>({});
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [naming, setNaming] = useState(false);
+  const [holidayName, setHolidayName] = useState('');
+  const holiday = month?.holidays?.[date] ?? '';
+
+  async function saveHoliday() {
+    try {
+      await store.setHoliday(date, holidayName);
+      setNaming(false);
+      setHolidayName('');
+      setError('');
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function removeHoliday() {
+    try {
+      await store.clearHoliday(date);
+      setError('');
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   const active = (students ?? []).filter((s) => s.active).sort((a, b) => a.name.localeCompare(b.name));
   const grades = [...new Set(active.map((s) => s.grade))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -54,6 +79,7 @@ export function AttendanceScreen({ store }: { store: DataStore }) {
   useEffect(() => {
     setEdits({});
     setSaved(false);
+    setNaming(false);
   }, [date]);
 
   async function save() {
@@ -93,13 +119,33 @@ export function AttendanceScreen({ store }: { store: DataStore }) {
       </div>
 
       <div class="screen">
-        {existing && !saved && <p class="note">Attendance is already taken for this day. You can change it.</p>}
+        {month && holiday && (
+          <div class="today today-ok">
+            <div><b>Holiday: {holiday}</b><span>No class this day. It is not counted as absent.</span></div>
+            <button class="btn small" type="button" onClick={removeHoliday}>Remove holiday</button>
+          </div>
+        )}
+        {month && !holiday && !naming && active.length > 0 && (
+          <button class="btn small" type="button" onClick={() => setNaming(true)}>Mark as holiday</button>
+        )}
+        {month && !holiday && naming && (
+          <div class="card">
+            <Field label="Holiday name"><input type="text" value={holidayName} placeholder="Diwali" maxLength={60} onInput={(e) => setHolidayName(val(e))} /></Field>
+            <div class="row">
+              <button class="btn primary small" type="button" onClick={saveHoliday}>Save holiday</button>
+              <button class="btn small" type="button" onClick={() => setNaming(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+        {error && holiday === '' && naming && <p class="errors" role="alert">{error}</p>}
+
+        {!holiday && existing && !saved && <p class="note">Attendance is already taken for this day. You can change it.</p>}
 
         {students && month && active.length === 0 && (
           <Empty title="No students yet" text="Add your students first, then come back to take attendance." />
         )}
 
-        {month && active.length > 0 && (
+        {month && !holiday && active.length > 0 && (
           <>
             <div class="counts" aria-label="Totals">
               <div class="count count-P"><b>{count('P')}</b><span>Present</span></div>

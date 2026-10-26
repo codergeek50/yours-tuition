@@ -40,7 +40,11 @@ export interface Payment {
 }
 
 export interface StudentsFile { students: Student[] }
-export interface AttendanceFile { days: Record<ISODate, Record<string, Mark>> }
+export interface AttendanceFile {
+  days: Record<ISODate, Record<string, Mark>>;
+  /** Days with no class for everyone, by name. An empty name means the holiday was removed (kept so a sync cannot bring it back). */
+  holidays?: Record<ISODate, string>;
+}
 export interface PaymentsFile { payments: Payment[] }
 export interface Meta { schemaVersion: 1; nextReceiptNumber: number }
 
@@ -73,5 +77,16 @@ export interface Visit {
   updatedAt: string;
 }
 
+/** Money the tuition spends: rent, supplies and so on. Deleted expenses are kept (flagged) so merges stay correct. */
+export interface Expense {
+  id: string;
+  date: ISODate;
+  label: string;
+  amount: number; // whole rupees, above zero
+  deleted: boolean;
+  updatedAt: string;
+}
+
 export interface TeachersFile { teachers: Teacher[] }
+export interface ExpensesFile { expenses: Expense[] }
 export interface VisitsFile { visits: Visit[] }

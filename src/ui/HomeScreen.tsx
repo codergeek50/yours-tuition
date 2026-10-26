@@ -11,13 +11,14 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
   const today = todayISO();
   const month = monthOf(today);
   const { data } = useLoad(async () => {
-    const [students, attendance, payments, visits, owed] = await Promise.all([store.students(), store.attendance(month), store.payments(month), store.visits(month), store.pendingOverview()]);
-    return { students, day: attendance.days[today], payments, visits, owed };
+    const [students, attendance, payments, visits, owed, expenses] = await Promise.all([store.students(), store.attendance(month), store.payments(month), store.visits(month), store.pendingOverview(), store.expenses(month)]);
+    return { students, day: attendance.days[today], holiday: attendance.holidays?.[today] ?? '', payments, visits, owed, spent: expenses.reduce((n, x) => n + x.amount, 0) };
   }, [store]);
 
   const students = data?.students ?? [];
   const active = students.filter((s) => s.active);
   const day = data?.day;
+  const holiday = data?.holiday ?? '';
   const present = active.filter((s) => (day?.[s.id] ?? 'P') === 'P').length;
   const absent = active.filter((s) => day?.[s.id] === 'A').length;
   const leave = active.filter((s) => day?.[s.id] === 'L').length;
@@ -47,13 +48,19 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
             <button class="btn primary small" type="button" onClick={() => goto('students', { addStudent: true })}>Add student</button>
           </div>
         )}
-        {data && active.length > 0 && !day && (
+        {data && active.length > 0 && holiday && (
+          <div class="today today-ok">
+            <div><b>Holiday: {holiday}</b><span>No class today</span></div>
+            <button class="btn small" type="button" onClick={() => goto('attendance')}>Open</button>
+          </div>
+        )}
+        {data && active.length > 0 && !day && !holiday && (
           <div class="today today-warn">
             <div><b>Attendance not taken yet</b><span>{active.length} students today</span></div>
             <button class="btn primary small" type="button" onClick={() => goto('attendance')}>Take attendance</button>
           </div>
         )}
-        {data && active.length > 0 && day && (
+        {data && active.length > 0 && day && !holiday && (
           <div class="today today-ok">
             <div><b>Attendance is done</b><span>{present} present · {absent} absent · {leave} leave</span></div>
             <button class="btn small" type="button" onClick={() => goto('attendance')}>Review</button>
@@ -80,7 +87,7 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
       <div class="tiles">
         <button type="button" class="tile tile-orange" onClick={() => goto('attendance')}>
           <IconAttendance size={64} />
-          <span class="tile-sub">{day ? `${present} present · ${absent} absent` : 'Not taken yet'}</span>
+          <span class="tile-sub">{holiday ? `Holiday: ${holiday}` : day ? `${present} present · ${absent} absent` : 'Not taken yet'}</span>
           <b>Mark attendance</b>
         </button>
         <button type="button" class="tile tile-cyan" onClick={() => goto('students')}>
@@ -102,6 +109,11 @@ export function HomeScreen({ store, settings, goto }: { store: DataStore; settin
           <IconTeacher size={64} />
           <span class="tile-sub">{teacherSub}</span>
           <b>Visiting teachers</b>
+        </button>
+        <button type="button" class="tile tile-wide tile-neutral" onClick={() => goto('expenses')}>
+          <IconFees size={64} />
+          <span class="tile-sub">{(data?.spent ?? 0) > 0 ? `${formatRupees(data?.spent ?? 0)} spent this month` : 'Rent and other costs'}</span>
+          <b>Expenses</b>
         </button>
       </div>
     </div>

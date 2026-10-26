@@ -33,7 +33,7 @@ describe('setup', () => {
   });
   it('the setup link decodes to the address and the key', () => {
     const link = tabValues(apps, 'Connection')[3][1];
-    expect(link.startsWith('https://codergeek50.github.io/yours-tuition/#setup=')).toBe(true);
+    expect(link.startsWith('https://tuition.tan0labs.in/#setup=')).toBe(true);
     const payload = link.split('#setup=')[1];
     const json = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
     expect(JSON.parse(json)).toEqual({ r: 'https://script.google.com/macros/s/FAKEDEPLOYMENTID/exec', t: key });
@@ -290,5 +290,45 @@ describe('the readable sheet', () => {
     expect(refresh().ok).toBe(true);
     expect(apps.state.logs.some((l) => l.includes('view refresh failed'))).toBe(true);
     expect(apps.state.logs.join(' ')).not.toContain('Asha');
+  });
+});
+
+describe('expenses and holidays (CR-4)', () => {
+  const refresh = () => call({ action: 'refresh' });
+
+  it('accepts expenses files by month, lists them, and refuses a wrong shape or month', () => {
+    expect(write('expenses/2026-10.json', { expenses: [{ id: 'a', date: '2026-10-05', label: 'Rent', amount: 4000, deleted: false }] })).toEqual({ ok: true, sha: '1' });
+    expect(call({ action: 'list', dir: 'expenses' })).toEqual({ ok: true, paths: ['expenses/2026-10.json'] });
+    expect(write('expenses/2026-10.json', { visits: [] }, '1')).toEqual({ ok: false, error: 'bad_request' });
+    expect(write('expenses/2026-13.json', { expenses: [] })).toEqual({ ok: false, error: 'bad_request' });
+    expect(call({ action: 'snapshot' }).files['expenses/2026-10.json']).toBeDefined();
+  });
+
+  it('Expenses tab lists each expense oldest first with a total, hides deleted ones and neutralises formulas', () => {
+    write('expenses/2026-10.json', { expenses: [
+      { id: 'b', date: '2026-10-12', label: 'Chalk', amount: 150, deleted: false },
+      { id: 'a', date: '2026-10-05', label: '=HYPERLINK("x")', amount: 4000, deleted: false },
+      { id: 'c', date: '2026-10-06', label: 'Old', amount: 9, deleted: true },
+    ] });
+    refresh();
+    const rows = tabValues(apps, 'Expenses');
+    expect(rows[0]).toEqual(['Date', 'What', 'Amount (Rs)']);
+    expect(rows.slice(1, 3)).toEqual([['2026-10-05', "'=HYPERLINK(\"x\")", 4000], ['2026-10-12', 'Chalk', 150]]);
+    expect(rows[3]).toEqual(['Total', '', 4150]);
+  });
+
+  it('accepts attendance with holidays, refuses holidays that are not an object', () => {
+    expect(write('attendance/2026-10.json', { days: {}, holidays: { '2026-10-20': 'Diwali' } })).toEqual({ ok: true, sha: '1' });
+    expect(write('attendance/2026-10.json', { days: {}, holidays: [] }, '1')).toEqual({ ok: false, error: 'bad_request' });
+    expect(write('attendance/2026-10.json', { days: {}, holidays: 'x' }, '1')).toEqual({ ok: false, error: 'bad_request' });
+  });
+
+  it('Attendance tab shows a holiday as H for everyone and does not count it', () => {
+    write('students.json', { students: [{ id: 'a', name: 'Asha' }] });
+    write('attendance/2026-10.json', { days: { '2026-10-19': { a: 'P' }, '2026-10-21': { a: 'A' } }, holidays: { '2026-10-20': 'Diwali', '2026-10-22': '' } });
+    refresh();
+    const rows = tabValues(apps, 'Attendance 2026-10');
+    expect(rows[0]).toEqual(['Student', '2026-10-19', '2026-10-20', '2026-10-21', 'Present', 'Absent', 'Leave']);
+    expect(rows[1]).toEqual(['Asha', 'P', 'H', 'A', 1, 1, 0]);
   });
 });

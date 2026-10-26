@@ -15,6 +15,8 @@ export interface AppsScriptOptions {
   fetchImpl?: typeof fetch;
   /** Tests only: also allow a web server on this computer. Never set in the app. */
   allowLocalTestServer?: boolean;
+  /** Pauses before each retry of a request Google answered badly. Tests pass zeros. */
+  retryDelaysMs?: number[];
 }
 
 type Reply = { ok: boolean; error?: string; [k: string]: unknown };
@@ -31,29 +33,43 @@ export class AppsScriptStorage implements Storage {
     this.opts = opts;
   }
 
+  /**
+   * Google's first response after a quiet spell can come back as a 404, a 5xx or an HTML page while the script wakes up;
+   * the same request a moment later works. Those are retried here. A wrong key, being offline and real answers are not.
+   */
   private async call(body: Record<string, unknown>): Promise<Reply> {
     const f = this.opts.fetchImpl ?? fetch;
-    let res: Response;
-    try {
-      // Plain-text POST, no custom headers and no cookies: the browser sends it without a pre-flight request.
-      res = await f(this.opts.endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ key: this.opts.key, ...body }),
-        redirect: 'follow',
-        credentials: 'omit',
-        cache: 'no-store',
-      });
-    } catch {
-      throw new NetworkError();
+    const delays = this.opts.retryDelaysMs ?? [1500, 4000];
+    let failure: Error = new Error('The data service did not answer.');
+    let reply: Reply | undefined;
+    for (let attempt = 0; attempt <= delays.length && !reply; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, delays[attempt - 1]));
+      let res: Response;
+      try {
+        // Plain-text POST, no custom headers and no cookies: the browser sends it without a pre-flight request.
+        res = await f(this.opts.endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ key: this.opts.key, ...body }),
+          redirect: 'follow',
+          credentials: 'omit',
+          cache: 'no-store',
+        });
+      } catch {
+        throw new NetworkError();
+      }
+      if (!res.ok) {
+        failure = new Error(`The data service answered with an error (${res.status}).`);
+        if (res.status === 404 || res.status === 408 || res.status === 429 || res.status >= 500) continue;
+        throw failure;
+      }
+      try {
+        reply = (await res.json()) as Reply;
+      } catch {
+        failure = new Error('The data service did not answer as expected. Check that the web app is deployed with access set to "Anyone".');
+      }
     }
-    if (!res.ok) throw new Error(`The data service answered with an error (${res.status}).`);
-    let reply: Reply;
-    try {
-      reply = (await res.json()) as Reply;
-    } catch {
-      throw new Error('The data service did not answer as expected. Check that the web app is deployed with access set to "Anyone".');
-    }
+    if (!reply) throw failure;
     if (reply.ok) return reply;
     switch (reply.error) {
       case 'auth':

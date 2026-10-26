@@ -1,8 +1,8 @@
-import type { AttendanceFile, ISODate, Mark, Meta, MonthKey, PayMode, Payment, PaymentsFile, Student, StudentsFile, Teacher, TeachersFile, Visit, VisitsFile } from '../domain/types';
+import type { AttendanceFile, Expense, ExpensesFile, ISODate, Mark, Meta, MonthKey, PayMode, Payment, PaymentsFile, Student, StudentsFile, Teacher, TeachersFile, Visit, VisitsFile } from '../domain/types';
 import { isValidISODate, monthOf, monthsInRange, todayISO } from '../domain/dates';
 import { normalizeVisit } from '../domain/teachers';
 import { nextId } from '../domain/fees';
-import { validatePayment, validateStudent, validateTeacher, validateVisit } from '../domain/validate';
+import { validateExpense, validatePayment, validateStudent, validateTeacher, validateVisit } from '../domain/validate';
 import type { LocalStore } from '../sync/local';
 
 const STUDENTS = 'students.json';
@@ -11,8 +11,10 @@ const attendancePath = (m: MonthKey) => `attendance/${m}.json`;
 const paymentsPath = (m: MonthKey) => `payments/${m}.json`;
 const TEACHERS = 'teachers.json';
 const visitsPath = (m: MonthKey) => `visits/${m}.json`;
+const expensesPath = (m: MonthKey) => `expenses/${m}.json`;
 
 export interface PaymentInput { studentId: string; forMonth: MonthKey; amount: number; paidOn: ISODate; mode: PayMode }
+export interface ExpenseInput { date: ISODate; label: string; amount: number }
 export interface VisitInput { teacherId: string; date: ISODate; hours: number; amount: number; note: string; paid?: boolean; paidOn?: ISODate }
 export interface PendingOverview { count: number; amount: number; byTeacher: Record<string, { count: number; amount: number }> }
 export interface BackupFile { app: 'yours-tuition'; version: 1; exportedAt: string; files: Record<string, string> }
@@ -78,14 +80,39 @@ export class DataStore {
 
   async saveAttendance(date: ISODate, marks: Record<string, Mark>): Promise<void> {
     if (!isValidISODate(date)) throw new Error('Attendance date is not valid');
-    await this.mutate<AttendanceFile>(attendancePath(monthOf(date)), { days: {} }, (f) => ({ days: { ...f.days, [date]: { ...marks } } }));
+    await this.mutate<AttendanceFile>(attendancePath(monthOf(date)), { days: {} }, (f) => ({ ...f, days: { ...f.days, [date]: { ...marks } } }));
   }
 
-  async attendanceRange(from: ISODate, to: ISODate): Promise<{ date: ISODate; marks: Record<string, Mark> }[]> {
-    const out: { date: ISODate; marks: Record<string, Mark> }[] = [];
+  // ---- holidays (days with no class for everyone)
+
+  /** Holidays of a month by date. Removed ones are left out. */
+  async holidays(month: MonthKey): Promise<Record<ISODate, string>> {
+    const all = (await this.attendance(month)).holidays ?? {};
+    return Object.fromEntries(Object.entries(all).filter(([, name]) => name));
+  }
+
+  async setHoliday(date: ISODate, name: string): Promise<void> {
+    if (!isValidISODate(date)) throw new Error('Holiday date is not valid');
+    const label = name.trim().slice(0, 60) || 'Holiday';
+    await this.mutate<AttendanceFile>(attendancePath(monthOf(date)), { days: {} }, (f) => ({ ...f, holidays: { ...(f.holidays ?? {}), [date]: label } }));
+  }
+
+  async clearHoliday(date: ISODate): Promise<void> {
+    if (!isValidISODate(date)) throw new Error('Holiday date is not valid');
+    await this.mutate<AttendanceFile>(attendancePath(monthOf(date)), { days: {} }, (f) => ({ ...f, holidays: { ...(f.holidays ?? {}), [date]: '' } }));
+  }
+
+  /** Days with marks or a holiday in the range, oldest first. A holiday day carries its name. */
+  async attendanceRange(from: ISODate, to: ISODate): Promise<{ date: ISODate; marks: Record<string, Mark>; holiday?: string }[]> {
+    const out: { date: ISODate; marks: Record<string, Mark>; holiday?: string }[] = [];
     for (const m of monthsInRange(from, to)) {
       const f = await this.attendance(m);
-      for (const [date, marks] of Object.entries(f.days)) if (date >= from && date <= to) out.push({ date, marks });
+      const holidays = Object.fromEntries(Object.entries(f.holidays ?? {}).filter(([, name]) => name));
+      const dates = new Set([...Object.keys(f.days), ...Object.keys(holidays)]);
+      for (const date of dates) {
+        if (date < from || date > to) continue;
+        out.push({ date, marks: f.days[date] ?? {}, ...(holidays[date] ? { holiday: holidays[date] } : {}) });
+      }
     }
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
@@ -284,6 +311,54 @@ export class DataStore {
     }));
   }
 
+  // ---- expenses (rent, supplies and so on)
+
+  /** Expenses of a month, newest first. Deleted ones are hidden here but kept in the file. */
+  async expenses(month: MonthKey): Promise<Expense[]> {
+    const file = await this.load<ExpensesFile>(expensesPath(month), { expenses: [] });
+    return file.expenses.filter((x) => !x.deleted).sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async expenseMonths(): Promise<MonthKey[]> {
+    const months: MonthKey[] = [];
+    for (const m of await this.monthsOf('expenses/')) if ((await this.expenses(m)).length) months.push(m);
+    return months;
+  }
+
+  async recordExpense(input: ExpenseInput): Promise<Expense> {
+    const expense: Expense = { id: nextId(), date: input.date, label: input.label.trim(), amount: input.amount, deleted: false, updatedAt: new Date().toISOString() };
+    const errs = validateExpense(expense);
+    if (errs.length) throw new Error(errs.map((e) => e.message).join('. '));
+    await this.mutate<ExpensesFile>(expensesPath(monthOf(expense.date)), { expenses: [] }, (f) => ({ expenses: [...f.expenses, expense] }));
+    return expense;
+  }
+
+  /** Edit an expense. Changing the date to another month moves it (added first, then flagged deleted, so a crash never loses it). */
+  async updateExpense(id: string, month: MonthKey, patch: Partial<ExpenseInput>): Promise<Expense> {
+    const current = (await this.expenses(month)).find((x) => x.id === id);
+    if (!current) throw new Error('Expense not found');
+    const next: Expense = { ...current, ...patch, label: (patch.label ?? current.label).trim(), updatedAt: new Date().toISOString() };
+    const errs = validateExpense(next);
+    if (errs.length) throw new Error(errs.map((e) => e.message).join('. '));
+    const newMonth = monthOf(next.date);
+    if (newMonth === month) {
+      await this.mutate<ExpensesFile>(expensesPath(month), { expenses: [] }, (f) => ({ expenses: f.expenses.map((x) => (x.id === id ? next : x)) }));
+    } else {
+      await this.mutate<ExpensesFile>(expensesPath(newMonth), { expenses: [] }, (f) => ({ expenses: [...f.expenses.filter((x) => x.id !== id), next] }));
+      await this.mutate<ExpensesFile>(expensesPath(month), { expenses: [] }, (f) => ({
+        expenses: f.expenses.map((x) => (x.id === id ? { ...x, deleted: true, updatedAt: next.updatedAt } : x)),
+      }));
+    }
+    return next;
+  }
+
+  async deleteExpense(id: string, month: MonthKey): Promise<void> {
+    if (!(await this.expenses(month)).some((x) => x.id === id)) throw new Error('Expense not found');
+    await this.mutate<ExpensesFile>(expensesPath(month), { expenses: [] }, (f) => ({
+      expenses: f.expenses.map((x) => (x.id === id ? { ...x, deleted: true, updatedAt: new Date().toISOString() } : x)),
+    }));
+  }
+
   // ---- backup and restore
 
   async exportAll(): Promise<string> {
@@ -337,7 +412,7 @@ export class DataStore {
   }
 }
 
-const ALLOWED_PATH = /^(students\.json|meta\.json|teachers\.json|(attendance|payments|visits)\/\d{4}-(0[1-9]|1[0-2])\.json)$/;
+const ALLOWED_PATH = /^(students\.json|meta\.json|teachers\.json|(attendance|payments|visits|expenses)\/\d{4}-(0[1-9]|1[0-2])\.json)$/;
 const MAX_FILE_CHARS = 5_000_000;
 
 function hasExpectedShape(path: string, doc: unknown): boolean {
@@ -347,6 +422,7 @@ function hasExpectedShape(path: string, doc: unknown): boolean {
   if (path === META) return Number.isInteger(d.nextReceiptNumber) && (d.nextReceiptNumber as number) >= 1;
   if (path === TEACHERS) return Array.isArray(d.teachers);
   if (path.startsWith('visits/')) return Array.isArray(d.visits);
+  if (path.startsWith('expenses/')) return Array.isArray(d.expenses);
   if (path.startsWith('attendance/')) return typeof d.days === 'object' && d.days !== null && !Array.isArray(d.days);
   return Array.isArray(d.payments);
 }

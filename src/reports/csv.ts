@@ -1,6 +1,7 @@
-import type { ISODate, Mark, MonthKey, Payment, Student, Teacher, Visit } from '../domain/types';
+import type { Expense, ISODate, Mark, MonthKey, Payment, Student, Teacher, Visit } from '../domain/types';
 import { normalizeVisit, visitSummary } from '../domain/teachers';
 import { balanceFor } from '../domain/fees';
+import type { MonthlyNet } from '../domain/summary';
 
 /** Quote cells for CSV and neutralise spreadsheet formulas (= + - @) typed into names or schools. */
 function cell(v: string | number): string {
@@ -14,12 +15,13 @@ export function toCsv(rows: (string | number)[][]): string {
   return rows.map((r) => r.map(cell).join(',')).join('\r\n');
 }
 
-export interface AttendanceDay { date: ISODate; marks: Record<string, Mark> }
+export interface AttendanceDay { date: ISODate; marks: Record<string, Mark>; holiday?: string }
 
 export function attendanceSummary(students: Student[], days: AttendanceDay[]) {
   return students.map((student) => {
     let present = 0, absent = 0, leave = 0;
     for (const d of days) {
+      if (d.holiday) continue; // no class that day, so nobody is counted
       const m = d.marks[student.id];
       if (m === 'P') present++;
       else if (m === 'A') absent++;
@@ -37,7 +39,7 @@ export function attendanceCsv(students: Student[], days: AttendanceDay[]): strin
     s.student.name,
     s.student.grade,
     s.student.school,
-    ...days.map((d) => d.marks[s.student.id] ?? ''),
+    ...days.map((d) => (d.holiday ? 'H' : d.marks[s.student.id] ?? '')),
     s.present,
     s.absent,
     s.leave,
@@ -92,5 +94,24 @@ export function visitSummaryCsv(teachers: Teacher[], visits: Visit[]): string {
     ['Teacher', 'Subject', 'Visits', 'Hours', 'Paid', 'Pending', 'Total'],
     ...rows.map((r) => [r.teacher.name, r.teacher.subject, r.visits, r.hours, r.paid, r.pending, r.paid + r.pending]),
     ['Total', '', totals.visits, totals.hours, totals.paid, totals.pending, totals.paid + totals.pending],
+  ]);
+}
+
+/** Every expense in the list, oldest first, with a total. Deleted expenses are left out. */
+export function expensesCsv(expenses: Expense[]): string {
+  const live = expenses.filter((x) => !x.deleted).sort((a, b) => a.date.localeCompare(b.date) || a.updatedAt.localeCompare(b.updatedAt));
+  const total = live.reduce((n, x) => n + x.amount, 0);
+  return toCsv([['Date', 'What', 'Amount'], ...live.map((x) => [x.date, x.label, x.amount]), ['Total', '', total]]);
+}
+
+/** One month's money in and out: fees collected, teachers paid, expenses and the net. */
+export function monthlyNetCsv(month: MonthKey, n: MonthlyNet): string {
+  return toCsv([
+    ['Month', month],
+    ['Fees collected', n.collected],
+    ['Visiting teachers paid', n.teachersPaid],
+    ['Expenses', n.expenses],
+    ['Net', n.net],
+    ['Visiting teachers still to pay', n.teachersPending],
   ]);
 }

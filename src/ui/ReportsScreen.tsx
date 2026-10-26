@@ -3,8 +3,9 @@ import type { Mark } from '../domain/types';
 import { addMonths, monthOf, todayISO } from '../domain/dates';
 import { formatRupees } from '../domain/money';
 import { balanceFor } from '../domain/fees';
+import { monthlyNet } from '../domain/summary';
 import type { DataStore } from '../data/store';
-import { attendanceCsv, attendanceSummary, feeReportCsv } from '../reports/csv';
+import { attendanceCsv, attendanceSummary, feeReportCsv, monthlyNetCsv } from '../reports/csv';
 import { Field, PageHeader, val } from './common';
 import { downloadText, useLoad } from './hooks';
 import { MonthNav } from './FeesScreen';
@@ -32,6 +33,8 @@ export function ReportsScreen({ store }: { store: DataStore }) {
   const { data: students } = useLoad(() => store.students(), [store]);
   const { data: days } = useLoad(() => store.attendanceRange(from, to), [store, from, to]);
   const { data: payments } = useLoad(() => store.payments(month), [store, month]);
+  const { data: visits } = useLoad(() => store.visits(month), [store, month]);
+  const { data: expenses } = useLoad(() => store.expenses(month), [store, month]);
 
   const sorted = [...(students ?? [])].sort((a, b) => a.name.localeCompare(b.name));
   // Only students who were on the roll in the range: active, or with marks in the range.
@@ -40,6 +43,8 @@ export function ReportsScreen({ store }: { store: DataStore }) {
   const feeStudents = sorted.filter((s) => s.active || (payments ?? []).some((p) => p.studentId === s.id));
   const collected = (payments ?? []).filter((p) => !p.receipt.voided).reduce((n, p) => n + p.amount, 0);
   const pending = sorted.filter((s) => s.active).reduce((n, s) => n + Math.max(balanceFor(s, month, payments ?? []), 0), 0);
+
+  const net = monthlyNet(payments ?? [], visits ?? [], expenses ?? []);
 
   const setRange = (m: string) => {
     const r = monthRange(m);
@@ -89,6 +94,7 @@ export function ReportsScreen({ store }: { store: DataStore }) {
                       <th scope="row" class="m-name">{r.student.name}</th>
                       {days.map((d) => {
                         const mk = d.marks[r.student.id];
+                        if (d.holiday) return <td key={d.date} class="m-cell m-H" title={`Holiday: ${d.holiday}`}>H</td>;
                         return mk ? (
                           <td key={d.date} class={`m-cell m-${mk}`} title={WORD[mk]}>{mk}</td>
                         ) : (
@@ -104,7 +110,7 @@ export function ReportsScreen({ store }: { store: DataStore }) {
                 </tbody>
               </table>
             </div>
-            <p class="muted small">P present, A absent, L leave, a dot means not recorded that day.</p>
+            <p class="muted small">P present, A absent, L leave, H holiday (not counted), a dot means not recorded that day.</p>
           </>
         )}
         <button class="btn primary wide" type="button" disabled={!days || days.length === 0}
@@ -123,6 +129,21 @@ export function ReportsScreen({ store }: { store: DataStore }) {
         <button class="btn primary wide" type="button" disabled={!students}
           onClick={() => downloadText(`fees_${month}.csv`, feeReportCsv(feeStudents, month, payments ?? []))}>
           <IconDownload size={20} /> Download fees CSV
+        </button>
+      </section>
+
+      <section class="card" aria-label="Monthly summary">
+        <h3>Monthly summary</h3>
+        <p class="muted small">For the month chosen above: fees collected, minus visiting teachers paid, minus expenses.</p>
+        <div class="stats two">
+          <div class="stat"><span>Fees collected</span><b>{formatRupees(net.collected)}</b></div>
+          <div class="stat"><span>Teachers paid</span><b>{formatRupees(net.teachersPaid)}</b></div>
+          <div class="stat"><span>Expenses</span><b>{formatRupees(net.expenses)}</b></div>
+          <div class="stat"><span>Net</span><b>{formatRupees(net.net)}</b></div>
+        </div>
+        {net.teachersPending > 0 && <p class="note">{formatRupees(net.teachersPending)} is still to pay to visiting teachers and is not taken off yet.</p>}
+        <button class="btn primary wide" type="button" onClick={() => downloadText(`summary_${month}.csv`, monthlyNetCsv(month, net))}>
+          <IconDownload size={20} /> Download summary CSV
         </button>
       </section>
     </div>

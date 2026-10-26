@@ -71,6 +71,44 @@ describe('verify', () => {
   });
 });
 
+describe('a slow start at Google is retried, not reported as a failure', () => {
+  const ok = () => new Response(JSON.stringify({ ok: true, app: 'yours-tuition', protocol: 1 }), { status: 200 });
+  const make = (replies: (() => Response)[]) => {
+    let n = 0;
+    const fetchImpl = (async () => replies[Math.min(n++, replies.length - 1)]!()) as unknown as typeof fetch;
+    const s = new AppsScriptStorage({ endpoint: 'https://script.google.com/macros/s/abc/exec', key: 'k', fetchImpl, retryDelaysMs: [0, 0] });
+    return { s, calls: () => n };
+  };
+
+  it('a 404 from the response relay on the first try is retried and succeeds', async () => {
+    const { s, calls } = make([() => new Response('<html>Not found</html>', { status: 404 }), ok]);
+    await s.verify();
+    expect(calls()).toBe(2);
+  });
+  it('a 5xx and an unreadable page are retried too', async () => {
+    const { s, calls } = make([() => new Response('x', { status: 503 }), () => new Response('<html>busy</html>', { status: 200 }), ok]);
+    await s.verify();
+    expect(calls()).toBe(3);
+  });
+  it('gives up after the retries with a readable message', async () => {
+    const { s, calls } = make([() => new Response('', { status: 404 })]);
+    await expect(s.verify()).rejects.toThrow(/answered with an error \(404\)/);
+    expect(calls()).toBe(3);
+  });
+  it('a wrong key is not retried', async () => {
+    const { s, calls } = make([() => new Response(JSON.stringify({ ok: false, error: 'auth' }), { status: 200 })]);
+    await expect(s.verify()).rejects.toBeInstanceOf(AuthError);
+    expect(calls()).toBe(1);
+  });
+  it('being offline is not retried here (the sync engine retries it later)', async () => {
+    let n = 0;
+    const fetchImpl = (async () => { n++; throw new TypeError('Failed to fetch'); }) as unknown as typeof fetch;
+    const s = new AppsScriptStorage({ endpoint: 'https://script.google.com/macros/s/abc/exec', key: 'k', fetchImpl, retryDelaysMs: [0, 0] });
+    await expect(s.verify()).rejects.toBeInstanceOf(NetworkError);
+    expect(n).toBe(1);
+  });
+});
+
 describe('reading, writing and listing', () => {
   it('creates, reads back, updates with the version, and lists', async () => {
     const { storage } = mk();
@@ -129,7 +167,7 @@ describe('how requests are sent', () => {
 });
 
 describe('when things go wrong', () => {
-  const storageWith = (fetchImpl: typeof fetch) => new AppsScriptStorage({ endpoint: 'https://script.google.com/macros/s/abc/exec', key: 'k', fetchImpl });
+  const storageWith = (fetchImpl: typeof fetch) => new AppsScriptStorage({ endpoint: 'https://script.google.com/macros/s/abc/exec', key: 'k', fetchImpl, retryDelaysMs: [0, 0] });
 
   it('no connection is a NetworkError', async () => {
     const s = storageWith((async () => { throw new TypeError('Failed to fetch'); }) as unknown as typeof fetch);

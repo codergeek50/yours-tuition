@@ -15,9 +15,9 @@ var PROTOCOL = 1;
 var FOLDER_NAME = 'YOURS Tuition data';
 var SHEET_NAME = 'YOURS Tuition data (read-only view)';
 var MAX_CHARS = 1000000;
-var APP_URL = 'https://codergeek50.github.io/yours-tuition/';
-var PATH_RE = /^(students\.json|teachers\.json|meta\.json|(attendance|payments|visits)\/\d{4}-(0[1-9]|1[0-2])\.json)$/;
-var DIRS = ['attendance', 'payments', 'visits'];
+var APP_URL = 'https://tuition.tan0labs.in/';
+var PATH_RE = /^(students\.json|teachers\.json|meta\.json|(attendance|payments|visits|expenses)\/\d{4}-(0[1-9]|1[0-2])\.json)$/;
+var DIRS = ['attendance', 'payments', 'visits', 'expenses'];
 
 // ------------------------------------------------------------------ pure helpers
 
@@ -104,10 +104,16 @@ function visitsTable(docs, teachersDoc) {
 
 function attendanceTable(monthDoc, studentsDoc) {
   var days = (monthDoc && monthDoc.days) || {};
-  var dates = Object.keys(days).sort();
+  var rawHolidays = (monthDoc && monthDoc.holidays) || {};
+  var holidays = {};
+  Object.keys(rawHolidays).forEach(function (d) { if (rawHolidays[d]) holidays[d] = true; });
+  var dateSet = {};
+  Object.keys(days).forEach(function (d) { dateSet[d] = true; });
+  Object.keys(holidays).forEach(function (d) { dateSet[d] = true; });
+  var dates = Object.keys(dateSet).sort();
   var students = (studentsDoc && studentsDoc.students) || [];
   var ids = {};
-  dates.forEach(function (d) { Object.keys(days[d]).forEach(function (id) { ids[id] = true; }); });
+  Object.keys(days).forEach(function (d) { Object.keys(days[d]).forEach(function (id) { ids[id] = true; }); });
   var known = students.filter(function (s) { return ids[s.id]; });
   var unknown = Object.keys(ids).filter(function (id) { return !students.some(function (s) { return s.id === id; }); });
   var rows = sortBy(known, function (s) { return String(s.name || '').toLowerCase(); }).map(function (s) { return { id: s.id, name: s.name }; });
@@ -115,13 +121,22 @@ function attendanceTable(monthDoc, studentsDoc) {
   var body = rows.map(function (r) {
     var p = 0, a = 0, l = 0;
     var marks = dates.map(function (d) {
-      var m = days[d][r.id] || '';
+      if (holidays[d]) return 'H'; // no class that day: shown, never counted
+      var m = (days[d] && days[d][r.id]) || '';
       if (m === 'P') p++; else if (m === 'A') a++; else if (m === 'L') l++;
       return m;
     });
     return [r.name].concat(marks, [p, a, l]);
   });
   return table(['Student'].concat(dates, ['Present', 'Absent', 'Leave']), body);
+}
+
+function expensesTable(docs) {
+  var all = [];
+  docs.forEach(function (d) { (d.expenses || []).forEach(function (x) { if (!x.deleted) all.push(x); }); });
+  var rows = sortBy(all, function (x) { return String(x.date); }).map(function (x) { return [x.date, x.label, x.amount]; });
+  var total = all.reduce(function (n, x) { return n + (Number(x.amount) || 0); }, 0);
+  return table(['Date', 'What', 'Amount (Rs)'], rows.concat([['Total', '', total]]));
 }
 
 function toBase64Url(text) {
@@ -175,8 +190,12 @@ function hasExpectedShape(path, doc) {
   if (path === 'students.json') return Array.isArray(doc.students);
   if (path === 'teachers.json') return Array.isArray(doc.teachers);
   if (path === 'meta.json') return typeof doc.nextReceiptNumber === 'number';
-  if (path.indexOf('attendance/') === 0) return doc.days !== null && typeof doc.days === 'object' && !Array.isArray(doc.days);
+  if (path.indexOf('attendance/') === 0) {
+    var okHolidays = doc.holidays === undefined || (doc.holidays !== null && typeof doc.holidays === 'object' && !Array.isArray(doc.holidays));
+    return doc.days !== null && typeof doc.days === 'object' && !Array.isArray(doc.days) && okHolidays;
+  }
   if (path.indexOf('payments/') === 0) return Array.isArray(doc.payments);
+  if (path.indexOf('expenses/') === 0) return Array.isArray(doc.expenses);
   return Array.isArray(doc.visits);
 }
 
@@ -227,7 +246,7 @@ function dedupeStale(paths) {
   return paths.filter(function (p) {
     if (has('students.json') && p.indexOf('attendance/') === 0) return false;
     if (has('teachers.json') && p.indexOf('visits/') === 0) return false;
-    var group = p.indexOf('payments/') === 0 ? 'payments' : p.indexOf('visits/') === 0 ? 'visits' : p;
+    var group = p.indexOf('payments/') === 0 ? 'payments' : p.indexOf('visits/') === 0 ? 'visits' : p.indexOf('expenses/') === 0 ? 'expenses' : p;
     if (seen[group]) return false;
     seen[group] = true;
     return true;
@@ -270,6 +289,8 @@ function refreshViews(path) {
       writeTab(ss, 'Attendance ' + monthOfPath(path), attendanceTable(readJson(path), readJson('students.json')));
     } else if (path.indexOf('payments/') === 0) {
       writeTab(ss, 'Payments', paymentsTable(docsInDir('payments').map(function (d) { return d.doc; })));
+    } else if (path.indexOf('expenses/') === 0) {
+      writeTab(ss, 'Expenses', expensesTable(docsInDir('expenses').map(function (d) { return d.doc; })));
     } else if (path.indexOf('visits/') === 0) {
       writeTab(ss, 'Visits', visitsTable(docsInDir('visits').map(function (d) { return d.doc; }), readJson('teachers.json')));
     }
@@ -442,5 +463,5 @@ function rotateKey() {
 if (typeof module !== 'undefined') {
   module.exports = { handle: handle, doPost: doPost, doGet: doGet, setup: setup, showConnection: showConnection, rotateKey: rotateKey,
     safeEqual: safeEqual, safeCell: safeCell, isAllowedPath: isAllowedPath, studentsTable: studentsTable, teachersTable: teachersTable,
-    paymentsTable: paymentsTable, visitsTable: visitsTable, attendanceTable: attendanceTable };
+    paymentsTable: paymentsTable, visitsTable: visitsTable, attendanceTable: attendanceTable, expensesTable: expensesTable };
 }

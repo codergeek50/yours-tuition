@@ -33,6 +33,11 @@ export function mergeFile(path: string, remoteText: string, localText: string): 
     const visits = byId(remote.visits ?? [], local.visits ?? [], (r: Json, l: Json) => (r.deleted ? r : l.deleted ? l : (l.updatedAt ?? '') >= (r.updatedAt ?? '') ? l : r));
     return JSON.stringify({ ...remote, ...local, visits }, null, 2);
   }
+  if (path.startsWith('expenses/')) {
+    // Same rule as visits: a deleted expense stays deleted; otherwise the newer edit wins.
+    const expenses = byId(remote.expenses ?? [], local.expenses ?? [], (r: Json, l: Json) => (r.deleted ? r : l.deleted ? l : (l.updatedAt ?? '') >= (r.updatedAt ?? '') ? l : r));
+    return JSON.stringify({ ...remote, ...local, expenses }, null, 2);
+  }
   if (path.startsWith('attendance/')) {
     const days: Record<string, Record<string, string>> = { ...(remote.days ?? {}) };
     for (const [date, marks] of Object.entries<Record<string, string>>(local.days ?? {})) {
@@ -40,7 +45,16 @@ export function mergeFile(path: string, remoteText: string, localText: string): 
       days[date] = { ...(days[date] ?? {}), ...marks };
     }
     for (const k of UNSAFE_KEYS) delete days[k];
-    return JSON.stringify({ ...remote, ...local, days }, null, 2);
+    const merged: Json = { ...remote, ...local, days };
+    if (remote.holidays || local.holidays) {
+      // Both sides' holidays are kept; this device wins for the same date (an empty name is a removal).
+      const holidays: Record<string, string> = {};
+      for (const side of [remote.holidays ?? {}, local.holidays ?? {}]) {
+        for (const [date, name] of Object.entries<string>(side)) if (!UNSAFE_KEYS.has(date)) holidays[date] = name;
+      }
+      merged.holidays = holidays;
+    }
+    return JSON.stringify(merged, null, 2);
   }
   if (path.startsWith('payments/')) {
     const payments = byId(remote.payments ?? [], local.payments ?? [], (r: Json, l: Json) => (r.receipt?.voided ? r : l.receipt?.voided ? l : l));

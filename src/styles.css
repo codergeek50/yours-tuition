@@ -417,6 +417,7 @@ thead .m-name { font-size: var(--t-xs); color: var(--muted); }
 .m-P { background: var(--ok-soft); color: var(--ok); }
 .m-A { background: var(--bad-soft); color: var(--bad); }
 .m-L { background: var(--warn-soft); color: var(--warn); }
+.m-H { background: var(--surface-2); color: var(--muted); }
 .m-none { color: var(--line-strong); font-weight: 400; }
 .m-sum { min-width: 34px; padding: 0 6px; text-align: center; font-weight: 600; background: var(--surface-2); font-size: var(--t-sm); }
 .m-sum:first-of-type { border-left: 1px solid var(--line); }

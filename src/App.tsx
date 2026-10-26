@@ -15,6 +15,7 @@ import { FeesScreen } from './ui/FeesScreen';
 import { ReportsScreen } from './ui/ReportsScreen';
 import { MoreScreen } from './ui/MoreScreen';
 import { TeachersScreen } from './ui/TeachersScreen';
+import { ExpensesScreen } from './ui/ExpensesScreen';
 import { HomeScreen } from './ui/HomeScreen';
 import type { Tab } from './ui/nav';
 import { BrandMark, IconAttendance, IconBack, IconFees, IconHome, IconMore, IconStudents } from './ui/icons';
@@ -28,7 +29,7 @@ const TABS: [Tab, string, () => preact.JSX.Element][] = [
   ['fees', 'Fees', () => <IconFees />],
   ['more', 'More', () => <IconMore />],
 ];
-const TITLES: Record<Tab, string> = { home: 'YOURS Tuition', attendance: 'Attendance', students: 'Students', fees: 'Fees', reports: 'Reports', teachers: 'Visiting teachers', more: 'More' };
+const TITLES: Record<Tab, string> = { home: 'YOURS Tuition', attendance: 'Attendance', students: 'Students', fees: 'Fees', reports: 'Reports', teachers: 'Visiting teachers', expenses: 'Expenses', more: 'More' };
 
 function problemText(e: unknown): string {
   if (e instanceof AuthError) return 'The data service did not accept the secret key. If the key was replaced, set this phone up again with the new setup link.';
@@ -238,6 +239,12 @@ function Shell(props: {
           <>
             <div class="screen backrow"><button class="btn quiet small" type="button" onClick={() => goto('home')}><IconBack size={18} /> Home</button></div>
             <TeachersScreen store={session.store} />
+          </>
+        )}
+        {tab === 'expenses' && (
+          <>
+            <div class="screen backrow"><button class="btn quiet small" type="button" onClick={() => goto('home')}><IconBack size={18} /> Home</button></div>
+            <ExpensesScreen store={session.store} />
           </>
         )}
         {tab === 'more' && (

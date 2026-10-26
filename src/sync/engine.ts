@@ -6,7 +6,7 @@ export type SyncStatus = 'synced' | 'offline' | 'auth' | 'error';
 export interface SyncResult { status: SyncStatus; pushed: number }
 
 const ROOT_FILES = ['students.json', 'meta.json', 'teachers.json'];
-const DIRS = ['attendance', 'payments', 'visits'];
+const DIRS = ['attendance', 'payments', 'visits', 'expenses'];
 const MAX_MERGE_ATTEMPTS = 5;
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
