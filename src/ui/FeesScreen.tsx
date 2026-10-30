@@ -204,7 +204,7 @@ function StudentFees(props: {
           ))}
         </ul>
       )}
-      {receipt && <ReceiptView payment={receipt} settings={settings} onClose={() => setReceipt(null)} />}
+      {receipt && <ReceiptView payment={receipt} settings={settings} guardianPhone={student.guardianPhone} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
